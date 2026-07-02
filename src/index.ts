@@ -11,6 +11,7 @@ import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
 import { ServerManager } from "./managers/server";
+import { StatsManager } from "./managers/stats";
 import { ConfigResolver } from "./resolver";
 import { Server } from "./server";
 
@@ -22,9 +23,13 @@ export default async function (pi: ExtensionAPI) {
   const eventManager = new EventManager(servers);
   const serverManager = new ServerManager(servers);
   const commandManager = new CommandManager(serverManager);
+  const statsManager = new StatsManager(urls);
 
   // Register providers once at startup
   await serverManager.initialize(pi);
+
+  // Wire up prompt-processing progress (fetch interception + UI updates)
+  statsManager.initialize(pi);
 
   // Single global /models command
   pi.registerCommand("models", {
