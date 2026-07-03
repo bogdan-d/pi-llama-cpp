@@ -73,8 +73,10 @@ export const createMockCtx = (
   selectFn: (prompt: string, options: string[]) => string | null,
 ) => ({
   cwd: "/tmp/test",
+  mode: "tui",
   ui: {
     select: vi.fn(selectFn),
+    custom: vi.fn(async <T,>(_factory: any) => null as T),
     notify: vi.fn(),
     theme: {
       fg: (color: string, text: string) => text,

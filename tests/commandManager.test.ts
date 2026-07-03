@@ -125,6 +125,7 @@ describe("CommandManager", () => {
       const models = [createMockModel("model-a")];
       const { commandManager, mockPi } = createCommandManager(models);
       const ctx = createMockCtx(() => null);
+      (ctx.ui.custom as any).mockResolvedValue(null);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
@@ -137,9 +138,9 @@ describe("CommandManager", () => {
       let selectCallCount = 0;
       const ctx = createMockCtx(() => {
         selectCallCount++;
-        if (selectCallCount === 1) return CHOICE;
         return Action.INFO;
       });
+      (ctx.ui.custom as any).mockResolvedValue(model);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
@@ -155,9 +156,9 @@ describe("CommandManager", () => {
       let selectCallCount = 0;
       const ctx = createMockCtx(() => {
         selectCallCount++;
-        if (selectCallCount === 1) return CHOICE;
         return Action.UNLOAD;
       });
+      (ctx.ui.custom as any).mockResolvedValue(model);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
@@ -171,9 +172,9 @@ describe("CommandManager", () => {
       let selectCallCount = 0;
       const ctx = createMockCtx(() => {
         selectCallCount++;
-        if (selectCallCount === 1) return CHOICE;
         return Action.SWITCH;
       });
+      (ctx.ui.custom as any).mockResolvedValue(model);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
@@ -185,17 +186,18 @@ describe("CommandManager", () => {
       const model = createMockModel("model-a");
       const { commandManager, mockPi } = createCommandManager([model]);
 
-      let selectCallCount = 0;
-      const ctx = createMockCtx(() => {
-        selectCallCount++;
-        // 1st: select model-a, 2nd: cancel action, 3rd: cancel model => exit
-        if (selectCallCount === 1) return CHOICE;
-        return null;
+      let customCallCount = 0;
+      const ctx = createMockCtx(() => null);
+      (ctx.ui.custom as any).mockImplementation(async <T,>(_factory: any) => {
+        customCallCount++;
+        // 1st: select model-a, 2nd: cancel action => null from select, 3rd: cancel model => null
+        if (customCallCount === 1) return model as T;
+        return null as T;
       });
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
-      expect(ctx.ui.select).toHaveBeenCalledTimes(3);
+      expect((ctx.ui.custom as any)).toHaveBeenCalledTimes(2);
       expect(ctx.ui.notify).not.toHaveBeenCalled();
     });
   });

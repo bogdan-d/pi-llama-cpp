@@ -2,7 +2,11 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { AutocompleteItem } from "@earendil-works/pi-tui";
+import {
+  AutocompleteItem,
+  SelectList,
+  type SelectItem,
+} from "@earendil-works/pi-tui";
 import { PROVIDER_NAME } from "../constants";
 import { Action } from "../enums/action";
 import { Mode } from "../enums/mode";
@@ -229,6 +233,14 @@ export class CommandManager {
     ctx: ExtensionCommandContext,
     models: BaseModel[],
   ): Promise<BaseModel | null> {
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify(
+        `${PROVIDER_NAME} model selection requires the TUI.`,
+        "warning",
+      );
+      return null;
+    }
+
     const labels = await Promise.all(
       models.map(async (model) => ({
         label: (await model.getLabel()).trim(),
@@ -244,17 +256,37 @@ export class CommandManager {
     const maxLength = Math.max(
       ...labels.map(({ label }) => graphemeLength(label)),
     );
-    const choices = labels.map(({ label, serverUrl }) => {
+    const items: SelectItem[] = labels.map(({ label, serverUrl }, idx) => {
       const extraPadding = 2;
       const padLen = maxLength - graphemeLength(label) + extraPadding;
-      return `${label}${" ".repeat(padLen)} [Server: ${serverUrl}]`;
+      return {
+        value: String(idx),
+        label: `${label}${" ".repeat(padLen)} [Server: ${serverUrl}]`,
+      };
     });
 
-    const choice = await ctx.ui.select(`${PROVIDER_NAME} models:`, choices);
-    if (!choice) return null;
-    const idx = choices.indexOf(choice);
+    const MAX_VISIBLE = 10;
+    const theme = {
+      selectedPrefix: (t: string) => ctx.ui.theme.fg("accent", `→ ${t}`),
+      selectedText: (t: string) => ctx.ui.theme.fg("accent", t),
+      description: (t: string) => ctx.ui.theme.fg("muted", t),
+      scrollInfo: (t: string) => ctx.ui.theme.fg("muted", t),
+      noMatch: (t: string) => ctx.ui.theme.fg("muted", t),
+    };
 
-    return models[idx];
+    const result = await ctx.ui.custom<BaseModel | null>((tui, _theme, _kb, done) => {
+      const list = new SelectList(items, MAX_VISIBLE, theme);
+      list.onSelect = (item) => {
+        const idx = parseInt(item.value, 10);
+        done(models[idx]);
+      };
+      list.onCancel = () => {
+        done(null);
+      };
+      return list;
+    });
+
+    return result;
   }
 
   /**
