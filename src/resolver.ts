@@ -1,6 +1,7 @@
+import { ApiKeyCredential, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
-  AuthStorage,
   getAgentDir,
+  readStoredCredential,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { readFile } from "node:fs/promises";
@@ -10,13 +11,11 @@ import {
   DEFAULT_LLAMA_SERVER_URL,
   DEFAULT_THINKING_BUDGETS,
 } from "./constants";
-import { ThinkingLevel } from "./interfaces/levels";
 
 export class ConfigResolver {
   private warnings: string[] = [];
 
   private cachedUrls: string[] = [];
-  private authStorage = AuthStorage.create(join(getAgentDir(), "auth.json"));
   private settingsManager = SettingsManager.create(
     process.cwd(),
     getAgentDir(),
@@ -107,13 +106,11 @@ export class ConfigResolver {
   }
 
   /**
-   * Resolves API key for the provider ID using Pi's AuthStorage
+   * Resolves API key for the provider ID using Pi's stored credentials
    */
-  async resolveApiKey(providerId: string): Promise<string> {
-    this.authStorage.reload();
-    const apiKey = await this.authStorage.getApiKey(providerId);
-
-    return apiKey ?? API_KEY_PLACEHOLDER;
+  resolveApiKey(providerId: string): string {
+    const credential = readStoredCredential(providerId) as ApiKeyCredential;
+    return credential?.key ?? API_KEY_PLACEHOLDER;
   }
 
   /**
@@ -131,7 +128,7 @@ export class ConfigResolver {
    *
    * @returns Selected level
    */
-  resolveThinkingLevel(): ThinkingLevel | undefined {
+  resolveThinkingLevel(): ModelThinkingLevel | undefined {
     return this.settingsManager.getDefaultThinkingLevel();
   }
 
@@ -140,7 +137,7 @@ export class ConfigResolver {
    *
    * @returns Thinking budgets
    */
-  resolveThinkingBudgets(): Record<ThinkingLevel, number> {
+  resolveThinkingBudgets(): Record<ModelThinkingLevel, number> {
     const settingsBudgets = this.settingsManager.getThinkingBudgets() ?? {};
     const availableBudgets = {
       ...DEFAULT_THINKING_BUDGETS,
