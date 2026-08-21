@@ -39,6 +39,6 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
