@@ -21,12 +21,12 @@ export const API_KEY_PLACEHOLDER = "sk-placeholder";
 /**
  * The default URL if the resolver couldn't find it
  */
-export const DEFAULT_LLAMA_SERVER_URL = "http://127.0.0.1:8080";
+export const LLAMA_SERVER_URL = "http://127.0.0.1:8080";
 
 /**
  * The default context if the server didn't expose it
  */
-export const DEFAULT_CTX = 128000;
+export const FALLBACK_CTX = 128000;
 
 /**
  * Polling interval (ms) for checking model load status
@@ -49,9 +49,19 @@ export const READABLE_TIMEOUT = 15000;
 export const SERVER_TIMEOUT = 1000;
 
 /**
+ * Default value for reactToModelSelect setting.
+ */
+export const REACT_TO_MODEL_SELECT = true;
+
+/**
+ * Default value for autoloadOnMessage setting.
+ */
+export const AUTOLOAD_ON_MESSAGE = false;
+
+/**
  * Thinking budgets to send to the server, depending on user-selected level in Pi.
  */
-export const DEFAULT_THINKING_BUDGETS = {
+export const THINKING_BUDGETS = {
   off: 0,
   minimal: 1024,
   low: 2048,

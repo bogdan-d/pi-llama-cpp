@@ -11,19 +11,16 @@ import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
 import { ServerManager } from "./managers/server";
+import { settings } from "./managers/settings";
 import { StatsManager } from "./managers/stats";
-import { ConfigResolver } from "./resolver";
-import { Server } from "./server";
 
 export default async function (pi: ExtensionAPI) {
-  const resolver = new ConfigResolver();
-  const urls = await resolver.resolveUrls();
-  const servers = urls.map((url) => new Server(url));
+  const servers = await settings.resolveServers();
 
   const eventManager = new EventManager(servers);
   const serverManager = new ServerManager(servers);
   const commandManager = new CommandManager(serverManager);
-  const statsManager = new StatsManager(urls);
+  const statsManager = new StatsManager(servers.map((s) => s.baseUrl));
 
   // Register providers once at startup
   await serverManager.initialize(pi);
@@ -44,9 +41,6 @@ export default async function (pi: ExtensionAPI) {
   pi.on("session_start", (event: SessionStartEvent, ctx: ExtensionContext) => {
     if (event.reason !== "startup") return;
     for (const warning of serverManager.getWarnings())
-      ctx.ui.notify(warning, "warning");
-
-    for (const warning of resolver.getWarnings())
       ctx.ui.notify(warning, "warning");
   });
 

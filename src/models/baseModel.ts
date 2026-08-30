@@ -1,5 +1,5 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_CTX, POLLING_INTERVAL, POLLING_TIMEOUT } from "../constants";
+import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
 import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
@@ -130,9 +130,9 @@ export abstract class BaseModel {
       const { data } = await this.server.fetchModels();
       const { n_ctx } = data.find((m) => m.id === this.id)?.meta!;
 
-      return n_ctx ?? DEFAULT_CTX;
+      return n_ctx ?? FALLBACK_CTX;
     } catch {
-      return DEFAULT_CTX;
+      return FALLBACK_CTX;
     }
   }
 
@@ -202,11 +202,31 @@ export abstract class BaseModel {
     await this.server.postRequest("load", this.id);
 
     if (await this.server.sseManager.probeSSE()) {
-      const { status, exit_code } =
-        await this.server.sseManager.subscribeToStatus(this.id);
+      try {
+        const { status, exit_code } =
+          await this.server.sseManager.subscribeToStatus(this.id);
 
-      if (status === "failed" || (status === "unloaded" && exit_code !== 0)) {
-        throw new Error(`Model loading failed: ${this.id}`);
+        if (status === "failed" || (status === "unloaded" && exit_code !== 0)) {
+          throw new Error(`Model loading failed: ${this.id}`);
+        }
+      } catch (err) {
+        // A real failed status from the server stays fatal.
+        if (
+          err instanceof Error &&
+          err.message.startsWith("Model loading failed")
+        ) {
+          throw err;
+        }
+        // An SSE timeout or connection failure is not proof the load failed:
+        // subscribeToStatus timers are only cleared by a terminal event on
+        // the same SSE connection, so a timer orphaned by a server restart
+        // or reconnect can fire during a later, healthy load. Check the
+        // model's real status over HTTP before surfacing an error.
+        await this.pollStatus();
+        const finalStatus = await this.getStatus();
+        if (finalStatus !== Status.LOADED && finalStatus !== Status.SLEEPING) {
+          throw new Error(`Model loading failed: ${this.id}`);
+        }
       }
     } else {
       await this.pollStatus();
@@ -224,14 +244,17 @@ export abstract class BaseModel {
    * Polls llama-server to check when the model is loaded
    *
    * @param startTime The initial polling timestamp
-   * @param timeout The maximum amount of ms before timeout. Defaults to POLLING_TIMEOUT
+   * @param timeout The maximum amount of ms before timeout. Defaults to server's pollingTimeout
    * @param interval The polling interval. Defaults to POLLING_INTERVAL
    */
   async pollStatus(
     startTime: number = Date.now(),
-    timeout: number = POLLING_TIMEOUT,
+    timeout?: number,
     interval: number = POLLING_INTERVAL,
   ): Promise<void> {
+    if (timeout === undefined) {
+      timeout = this.server.pollingTimeout;
+    }
     while ((await this.getStatus()) === Status.LOADING) {
       // Force a timeout if we wasted too much time polling
       if (Date.now() - startTime > timeout) {

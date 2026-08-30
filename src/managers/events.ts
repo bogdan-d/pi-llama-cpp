@@ -3,9 +3,10 @@ import {
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { READABLE_TIMEOUT } from "../constants";
+import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
+import { settings } from "../managers/settings";
 import { BaseModel } from "../models/baseModel";
-import { ConfigResolver } from "../resolver";
 import { Server } from "../server";
 
 export class EventManager {
@@ -27,6 +28,9 @@ export class EventManager {
    * @param ctx Pi context
    */
   async onModelSelect(event: ModelSelectEvent, ctx: ExtensionContext) {
+    // Check if the model_select event should be used
+    if (!settings.resolveReactToModelSelect()) return;
+
     for (const { providerId, models } of this.servers) {
       if (event.model.provider !== providerId) continue;
 
@@ -42,6 +46,20 @@ export class EventManager {
         );
       return;
     }
+  }
+
+  /**
+   * Loads the model if auto-loading is enabled and the model is unloaded.
+   *
+   * @param model The model to potentially auto-load
+   */
+  private async autoLoadIfNeeded(model: BaseModel): Promise<void> {
+    if (!settings.resolveAutoloadOnMessage()) return;
+
+    const status = await model.getStatus();
+    if (status !== Status.UNLOADED) return;
+
+    await model.load();
   }
 
   /**
@@ -81,17 +99,19 @@ export class EventManager {
     if (!model) return payload;
 
     // Check if this model belongs to one of our servers
-    const isLlamaCpp = this.servers.some((s) =>
-      s.models.some((m) => m.id === model),
-    );
+    const serverModel = this.servers
+      .flatMap((s) => s.models)
+      .find((m) => m.id === model);
 
-    if (!isLlamaCpp) return payload;
+    if (!serverModel) return payload;
+
+    // Auto-load if enabled and model is unloaded
+    await this.autoLoadIfNeeded(serverModel);
 
     // Retrieve pi's current thinking level, so we can setup a budget
-    const resolver = new ConfigResolver();
     const level =
-      ctx.thinkingLevel ?? resolver.resolveThinkingLevel() ?? "medium";
-    const budgets = resolver.resolveThinkingBudgets();
+      ctx.thinkingLevel ?? settings.resolveThinkingLevel() ?? "medium";
+    const budgets = settings.resolveThinkingBudgets();
     const thinking_budget_tokens = budgets[level];
 
     // Setup payload

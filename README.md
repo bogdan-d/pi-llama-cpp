@@ -9,9 +9,9 @@ A [Pi Coding Agent](https://pi.dev/) extension that integrates with running [lla
 - **Load / unload / switch** — manage models directly from the Pi command palette
 - **Multi-model router support** — works with both single-model and multi-model llama.cpp server configurations
 - **Image capabilities detection** — detects multimodal models automatically
-- **Flexible URL resolution** — configures the server URL via project config, environment variable, or global settings
+- **Flexible URL resolution** — configures the server via `llamaSettings` (project/global), environment variable, or legacy `llamaServerUrl`
 - **Auth support** — allows to login into a llama.cpp server that was secured with an API key
-- **Multiple server support** — connect to multiple llama.cpp servers simultaneously by separating URLs with semicolons
+- **Multiple server support** — connect to multiple llama.cpp servers simultaneously via `llamaSettings.servers` or semicolon-separated URLs
 - **Thinking budget support** — configurable token budgets for model reasoning/thinking, mapped to Pi's thinking levels
 - **Real-time progress tracking** — live loading progress via SSE (falls back to polling)
 
@@ -48,34 +48,107 @@ pi install https://github.com/gsanhueza/pi-llama-cpp
 
 ## Configuration
 
-The extension resolves the llama.cpp server URL(s) using the following priority order:
+The extension resolves the llama.cpp server configuration using the following priority order:
 
-1. **Per-project config** — `.pi/settings.json` in your project root:
-
-   ```json
-   {
-     "llamaServerUrl": "http://127.0.0.1:8080"
-   }
-   ```
-
-2. **Environment variable** — `LLAMA_SERVER_URL`
-
-3. **Global settings** — `~/.pi/agent/settings.json`:
-
-   ```json
-   {
-     "llamaServerUrl": "http://127.0.0.1:8080"
-   }
-   ```
-
+1. **Environment variable** — `LLAMA_SERVER_URL`
+2. **`llamaSettings`** — Main configuration format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
+3. **`llamaServerUrl`** — Legacy format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
 4. **Default** — `http://127.0.0.1:8080`
 
-### Multiple Servers
+### Server configuration
 
-To connect to multiple llama.cpp servers simultaneously, add your URLs as a single string **separated with semicolons** in any of the examples above:
+The recommended way to configure the extension is using the `llamaSettings` key. This provides a structured way to define multiple servers with custom names and IDs, plus additional behavior options.
+
+Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global):
+
+```json
+{
+  "llamaSettings": {
+    "servers": [
+      {
+        "url": "http://127.0.0.1:8080",
+        "id": "local",
+        "name": "Local Server"
+      },
+      {
+        "url": "http://10.0.0.5:8080",
+        "name": "Remote Server"
+      }
+    ],
+    "reactToModelSelect": true,
+    "autoloadOnMessage": false,
+    "pollingTimeout": 60000,
+    "serverTimeout": 1000
+  }
+}
+```
+
+With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** and **Llama.cpp (Remote Server)**.
+
+#### Server Options
+
+| Option | Type   | Required | Description                                                                  |
+| ------ | ------ | -------- | ---------------------------------------------------------------------------- |
+| `url`  | string | Yes      | The URL of the llama.cpp server                                              |
+| `id`   | string | No       | Custom provider ID (used for API key auth). Defaults to `llama-server=<url>` |
+| `name` | string | No       | Display name for the server in the UI (shown as `Llama.cpp — <name>`)        |
+
+> **Note:** If you set a custom `id`, you can use it in `~/.pi/agent/auth.json`. The extension will also fall back to the URL-based ID if no key is found for the custom `id`.
+
+#### Settings Options
+
+| Option               | Type    | Default | Description                                                   |
+| -------------------- | ------- | ------- | ------------------------------------------------------------- |
+| `reactToModelSelect` | boolean | `true`  | Load the model when you switch via Pi's model picker.         |
+| `autoloadOnMessage`  | boolean | `false` | Automatically load an unloaded model before sending a message |
+| `pollingTimeout`     | number  | `60000` | Max time (ms) to wait for model loading before giving up      |
+| `serverTimeout`      | number  | `1000`  | Timeout (ms) for server health checks and SSE probes          |
+
+> **Note:** `serverTimeout` controls individual HTTP request timeouts (health checks, SSE probe). `pollingTimeout` controls the total wait time for a model to finish loading. Increase `serverTimeout` for slow/high-latency servers, and `pollingTimeout` for large models or slow hardware.
+
+#### Environment variable
+
+For a quick setup, you can use the `LLAMA_SERVER_URL` environment variable instead of the JSON config:
 
 ```bash
-# Example for env, but you can use any of the other methods
+export LLAMA_SERVER_URL="http://127.0.0.1:8080"
+```
+
+This is equivalent to defining a single server in `llamaSettings.servers` with just a URL.
+
+### Legacy configuration
+
+For a simpler setup, you can use the legacy `llamaServerUrl` key:
+
+```json
+{
+  "llamaServerUrl": "http://127.0.0.1:8080"
+}
+```
+
+This is equivalent to defining a single server in `llamaSettings.servers` with just a URL.
+
+### Multiple servers
+
+To connect to multiple llama.cpp servers simultaneously:
+
+**Using `llamaSettings` (recommended):**
+
+```json
+{
+  "llamaSettings": {
+    "servers": [
+      { "url": "http://127.0.0.1:8080" },
+      { "url": "http://127.0.0.1:8081" },
+      { "url": "http://10.0.0.5:8080" }
+    ]
+  }
+}
+```
+
+**Using the environment variable:**
+
+```bash
 LLAMA_SERVER_URL="http://127.0.0.1:8080;http://127.0.0.1:8081;http://10.0.0.5:8080"
 ```
 
@@ -86,7 +159,7 @@ Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:8080)**) 
 If your llama.cpp server requires authentication, use `/login` in Pi, select the "API key" option, and choose the provider from the list that correlates with the server needing the API key.
 
 Alternatively, configure the API key in `~/.pi/agent/auth.json`:
-Use the provider ID `llama-server=<url>`:
+Use the provider ID `llama-server=<url>` (or your custom `id` if you set one in `llamaSettings.servers`):
 
 ```json
 {
@@ -199,13 +272,15 @@ When you switch models via Pi's model picker (instead of using the `/models` com
 
 This keeps the server in sync with the active model in Pi, regardless of how the switch was initiated — you don't need to manually load models before using them.
 
+You can disable this behavior by setting `reactToModelSelect` to `false` in `llamaSettings`.
+
 > **Note:** If you switch sessions while a model load is in-flight, you'll see a warning, but the load continues in the background. Use `/models` in the new session to verify the model status.
 
 ### Loading Models
 
 When you trigger a load, switch, or retry action, the extension uses SSE (Server-Sent Events) to receive real-time progress updates from the server. If SSE is not available, it falls back to polling.
 
-If loading takes longer than **60 seconds**, the operation times out with an error.
+If loading takes longer than **60 seconds** (configurable via `pollingTimeout`), the operation times out with an error.
 
 > **Note:** The timeout only applies to the progress detection. The model might still be loading in the background.
 

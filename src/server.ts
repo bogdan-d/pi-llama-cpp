@@ -1,5 +1,11 @@
 import { ApiClient } from "./api/client";
-import { PROVIDER_NAME, PROVIDER_PREFIX } from "./constants";
+import {
+  API_KEY_PLACEHOLDER,
+  POLLING_TIMEOUT,
+  PROVIDER_NAME,
+  PROVIDER_PREFIX,
+  SERVER_TIMEOUT,
+} from "./constants";
 import { Mode } from "./enums/mode";
 import { ServerStatus } from "./enums/serverStatus";
 import { HealthEndpoint } from "./interfaces/endpoints/health";
@@ -8,20 +14,25 @@ import {
   PropsEndpoint,
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
+import { settings } from "./managers/settings";
 import { BaseModel } from "./models/baseModel";
 import { LegacyModel } from "./models/legacyModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
-import { ConfigResolver } from "./resolver";
 import { SSEManager } from "./sse/manager";
 
 export class Server {
   public readonly models: BaseModel[] = [];
-  private configResolver = new ConfigResolver();
   private apiClient!: ApiClient;
   private sse!: SSEManager;
 
-  constructor(readonly baseUrl: string) {}
+  constructor(
+    readonly baseUrl: string,
+    private readonly customId?: string,
+    private readonly customName?: string,
+    readonly serverTimeout: number = SERVER_TIMEOUT,
+    readonly pollingTimeout: number = POLLING_TIMEOUT,
+  ) {}
 
   /**
    * Provides access to the SSE manager for direct subscriptions.
@@ -32,24 +43,37 @@ export class Server {
 
   /**
    * Generates a unique provider ID from a server URL.
+   * Uses custom ID if provided, otherwise falls back to URL-based ID.
    */
   get providerId(): string {
-    return `${PROVIDER_PREFIX}=${this.baseUrl}`;
+    return this.customId ?? `${PROVIDER_PREFIX}=${this.baseUrl}`;
   }
 
   /**
    * Generates a human-readable provider name from a server URL.
+   * Uses custom name as suffix if provided.
    */
   get providerName(): string {
+    if (this.customName) {
+      return `${PROVIDER_NAME} (${this.customName})`;
+    }
     return `${PROVIDER_NAME} (${this.baseUrl})`;
   }
 
   /**
-   * Retrieves the API key from the resolver
+   * Retrieves the API key from the config resolver.
+   * Tries custom ID first, then falls back to URL-based ID.
+   *
    * @returns The API key
    */
-  async getApiKey(): Promise<string> {
-    return await this.configResolver.resolveApiKey(this.providerId);
+  getApiKey(): string {
+    // Try custom ID first
+    if (this.customId) {
+      const key = settings.resolveApiKey(this.customId);
+      if (key !== API_KEY_PLACEHOLDER) return key;
+    }
+    // Fall back to URL-based ID
+    return settings.resolveApiKey(`${PROVIDER_PREFIX}=${this.baseUrl}`);
   }
 
   /**
@@ -59,7 +83,7 @@ export class Server {
   async initialize() {
     const apiKey = await this.getApiKey();
     this.apiClient = new ApiClient(this.baseUrl, apiKey);
-    this.sse = new SSEManager(this.baseUrl, apiKey);
+    this.sse = new SSEManager(this.baseUrl, apiKey, this.serverTimeout);
     const { data } = await this.fetchModels();
     const mode = await this.detectServerMode();
 
