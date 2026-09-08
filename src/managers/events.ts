@@ -5,17 +5,35 @@ import {
 import { READABLE_TIMEOUT } from "../constants";
 import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
-import { settings } from "../managers/settings";
+import type { LlamaSettingsManager } from "../managers/settings";
 import { BaseModel } from "../models/baseModel";
-import { Server } from "../server";
+import { ServerManager } from "./server";
 
 export class EventManager {
+  /**
+   * Model with a load currently in flight. Deliberately a class static
+   * (REFACTOR.md §3.3): the load is started by CommandManager
+   * (fire-and-forget from the /models editor) while the "session switched
+   * mid-load" warning must be emitted here, from the session_before_switch
+   * hook — a shared static is the least-plumbing bridge between the two
+   * event-owning managers.
+   *
+   * Known limits, accepted: (1) single slot — a second overlapping load
+   * overwrites the first, and the first load's onFinished reset can clear
+   * the flag while the second is still loading, so the session-switch
+   * warning may be missed; (2) loads initiated from this class
+   * (onModelSelect / autoLoadIfNeeded) never set the flag.
+   */
   static inflightModel: BaseModel | null = null;
 
-  constructor(private readonly servers: Server[]) {}
+  constructor(
+    private readonly serverManager: ServerManager,
+    private readonly settings: LlamaSettingsManager,
+  ) {}
 
   /**
-   * Resets the in-flight model reference.
+   * Resets the in-flight model reference. Called by CommandManager when
+   * its load settles (see `inflightModel` for why this lives on a static).
    */
   static resetInflightModel() {
     EventManager.inflightModel = null;
@@ -29,9 +47,9 @@ export class EventManager {
    */
   async onModelSelect(event: ModelSelectEvent, ctx: ExtensionContext) {
     // Check if the model_select event should be used
-    if (!settings.resolveReactToModelSelect()) return;
+    if (!this.settings.resolveReactToModelSelect()) return;
 
-    for (const { providerId, models } of this.servers) {
+    for (const { providerId, models } of this.serverManager.servers) {
       if (event.model.provider !== providerId) continue;
 
       const model = models.find((m) => m.id === event.model.id);
@@ -54,7 +72,7 @@ export class EventManager {
    * @param model The model to potentially auto-load
    */
   private async autoLoadIfNeeded(model: BaseModel): Promise<void> {
-    if (!settings.resolveAutoloadOnMessage()) return;
+    if (!this.settings.resolveAutoloadOnMessage()) return;
 
     const status = await model.getStatus();
     if (status !== Status.UNLOADED) return;
@@ -99,7 +117,7 @@ export class EventManager {
     if (!model) return payload;
 
     // Check if this model belongs to one of our servers
-    const serverModel = this.servers
+    const serverModel = this.serverManager.servers
       .flatMap((s) => s.models)
       .find((m) => m.id === model);
 
@@ -110,8 +128,8 @@ export class EventManager {
 
     // Retrieve pi's current thinking level, so we can setup a budget
     const level =
-      ctx.thinkingLevel ?? settings.resolveThinkingLevel() ?? "medium";
-    const budgets = settings.resolveThinkingBudgets();
+      ctx.thinkingLevel ?? this.settings.resolveThinkingLevel() ?? "medium";
+    const budgets = this.settings.resolveThinkingBudgets();
     const thinking_budget_tokens = budgets[level];
 
     // Setup payload

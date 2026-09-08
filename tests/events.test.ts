@@ -1,59 +1,29 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { THINKING_BUDGETS } from "../src/constants";
 import { Status } from "../src/enums/status";
-import { createMockModel, createMockServer } from "./mocks";
+import { EventManager } from "../src/managers/events";
+import { ServerManager } from "../src/managers/server";
+import type { Server } from "../src/server";
+import { createMockModel, createMockServer, makeSettingsStub } from "./mocks";
 
-// Mock settings — reactToModelSelect and autoloadOnMessage
-const mockSettings = {
-  resolveReactToModelSelect: vi.fn(() => true),
-  resolveAutoloadOnMessage: vi.fn(() => false),
-  resolveThinkingLevel: vi.fn(() => "medium"),
-  resolveThinkingBudgets: vi.fn(() => ({ ...THINKING_BUDGETS })),
-};
+/**
+ * Injected settings stub (EventManager and — in the live-list test — the
+ * real ServerManager). Recreated in `beforeEach` so per-case overrides
+ * (budgets, autoload, …) cannot leak between tests.
+ */
+let settingsStub = makeSettingsStub();
 
-// Wire resolveThinkingBudgets to use the SettingsManager mock when set
-mockSettings.resolveThinkingBudgets.mockImplementation(() => {
-  const userBudgets = mockSettingsManager.getThinkingBudgets();
-  if (userBudgets) {
-    return { ...THINKING_BUDGETS, ...userBudgets };
-  }
-  return { ...THINKING_BUDGETS };
-});
-
-// Create a mutable mock object shared across tests
-const mockSettingsManager = {
-  getDefaultThinkingLevel: vi.fn(() => "medium"),
-  getThinkingBudgets: vi.fn<() => Record<string, number> | undefined>(),
-};
-
-vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
-  return {
-    ...actual,
-    SettingsManager: {
-      create: () => mockSettingsManager,
-    },
-  };
-});
-
-vi.mock("../src/managers/settings", () => ({
-  settings: mockSettings,
-}));
-
-let EventManager: typeof import("../src/managers/events").EventManager;
-
-beforeAll(async () => {
-  const mod = await vi.importActual("../src/managers/events");
-  EventManager =
-    mod.EventManager as typeof import("../src/managers/events").EventManager;
-});
+/**
+ * Builds an EventManager on a ServerManager stub exposing `servers`.
+ * (The real ServerManager is exercised in the live-list test below.)
+ */
+const createEventManager = (...servers: Server[]) =>
+  new EventManager({ servers } as unknown as ServerManager, settingsStub);
 
 beforeEach(() => {
   vi.restoreAllMocks();
   EventManager.resetInflightModel();
-  mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("medium");
-  mockSettingsManager.getThinkingBudgets.mockReturnValue(undefined);
+  settingsStub = makeSettingsStub();
 });
 
 const createPayload = (modelId: string) => ({
@@ -97,12 +67,14 @@ describe("EventManager.onBeforeProviderRequest", () => {
     ])(
       'level "$level" should return $expected',
       async ({ level, expected }) => {
-        mockSettingsManager.getDefaultThinkingLevel.mockReturnValue(level);
+        vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue(
+          level as any,
+        );
 
         const server = createMockServer({
           models: ["model-a"].map((id) => createMockModel(id)),
         });
-        const eventManager = new EventManager([server]);
+        const eventManager = createEventManager(server);
         const event = { payload: createPayload("model-a") };
 
         const ctx = createMockCtx(level as any);
@@ -117,12 +89,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
     );
 
     it("should preserve original payload fields alongside new ones", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("low");
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("low");
 
       const server = createMockServer({
         models: ["model-b"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = {
         payload: {
           model: "model-b",
@@ -148,7 +120,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createNonLlamaPayload() };
 
       const ctx = createMockCtx();
@@ -166,7 +138,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: { messages: [] } };
 
       const ctx = createMockCtx();
@@ -181,13 +153,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
 
   describe("user-defined budget overrides", () => {
     it("should use user-defined budgets instead of defaults", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("low");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({ low: 4096 });
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("low");
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
+        low: 4096,
+      });
 
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("low");
@@ -200,13 +175,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
     });
 
     it("should merge user budgets with defaults (partial override)", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("medium");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({ low: 4096 });
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("medium");
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
+        low: 4096,
+      });
 
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("medium");
@@ -224,8 +202,9 @@ describe("EventManager.onBeforeProviderRequest", () => {
 
   describe("edge cases", () => {
     it("should ignore invalid keys in user budgets (they are silently dropped)", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("medium");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("medium");
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
         foo: 999,
         bar: 123,
       } as any);
@@ -233,7 +212,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("medium");
@@ -247,15 +226,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
     });
 
     it("should not allow overriding 'off' — thinking stays disabled", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("off");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("off");
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
         off: 99999,
-      } as any);
+      });
 
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("off");
@@ -271,15 +251,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
     });
 
     it("should not inject budget for 'max' — unlimited reasoning", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("max");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("max");
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
         max: 1,
-      } as any);
+      });
 
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("max");
@@ -293,13 +274,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
     });
 
     it("should handle empty user budgets gracefully", async () => {
-      mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("high");
-      mockSettingsManager.getThinkingBudgets.mockReturnValue({});
+      vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("high");
+      // No user overrides — the resolver returns the default budget table
+      vi.mocked(settingsStub.resolveThinkingBudgets).mockReturnValue({
+        ...THINKING_BUDGETS,
+      });
 
       const server = createMockServer({
         models: ["model-a"].map((id) => createMockModel(id)),
       });
-      const eventManager = new EventManager([server]);
+      const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("high");
@@ -315,14 +299,14 @@ describe("EventManager.onBeforeProviderRequest", () => {
 
 describe("EventManager.onModelSelect", () => {
   beforeEach(() => {
-    mockSettings.resolveReactToModelSelect.mockReturnValue(true);
+    vi.mocked(settingsStub.resolveReactToModelSelect).mockReturnValue(true);
   });
 
   it("should load the model when reactToModelSelect is true", async () => {
     const server = createMockServer({
       models: ["model-a"].map((id) => createMockModel(id)),
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
     const event = {
@@ -335,12 +319,12 @@ describe("EventManager.onModelSelect", () => {
   });
 
   it("should return early when reactToModelSelect is false", async () => {
-    mockSettings.resolveReactToModelSelect.mockReturnValue(false);
+    vi.mocked(settingsStub.resolveReactToModelSelect).mockReturnValue(false);
 
     const server = createMockServer({
       models: ["model-a"].map((id) => createMockModel(id)),
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
     const event = {
@@ -355,7 +339,7 @@ describe("EventManager.onModelSelect", () => {
 
 describe("EventManager.autoLoadIfNeeded", () => {
   it("should load the model when autoloadOnMessage is true and model is UNLOADED", async () => {
-    mockSettings.resolveAutoloadOnMessage.mockReturnValue(true);
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockReturnValue(true);
 
     const server = createMockServer({
       models: [
@@ -365,7 +349,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
         }),
       ],
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const model = server.models[0];
 
     await (eventManager as any).autoLoadIfNeeded(model);
@@ -374,7 +358,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   });
 
   it("should not load the model when autoloadOnMessage is false", async () => {
-    mockSettings.resolveAutoloadOnMessage.mockReturnValue(false);
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockReturnValue(false);
 
     const server = createMockServer({
       models: [
@@ -384,7 +368,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
         }),
       ],
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const model = server.models[0];
 
     await (eventManager as any).autoLoadIfNeeded(model);
@@ -393,7 +377,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   });
 
   it("should not load the model when model is already LOADED", async () => {
-    mockSettings.resolveAutoloadOnMessage.mockReturnValue(true);
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockReturnValue(true);
 
     const server = createMockServer({
       models: [
@@ -403,7 +387,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
         }),
       ],
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const model = server.models[0];
 
     await (eventManager as any).autoLoadIfNeeded(model);
@@ -412,7 +396,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   });
 
   it("should not load the model when model is SLEEPING", async () => {
-    mockSettings.resolveAutoloadOnMessage.mockReturnValue(true);
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockReturnValue(true);
 
     const server = createMockServer({
       models: [
@@ -422,11 +406,56 @@ describe("EventManager.autoLoadIfNeeded", () => {
         }),
       ],
     });
-    const eventManager = new EventManager([server]);
+    const eventManager = createEventManager(server);
     const model = server.models[0];
 
     await (eventManager as any).autoLoadIfNeeded(model);
 
     expect(model.load).not.toHaveBeenCalled();
+  });
+});
+
+describe("EventManager with a live ServerManager", () => {
+  it("should observe servers added after construction", async () => {
+    const serverA = createMockServer({
+      models: [createMockModel("model-a")],
+    });
+    const serverB = createMockServer({
+      baseUrl: "http://127.0.0.1:8081",
+      models: [
+        createMockModel("model-b", { serverUrl: "http://127.0.0.1:8081" }),
+      ],
+    });
+
+    vi.mocked(settingsStub.resolveServers).mockReturnValue([serverA]);
+    const serverManager = new ServerManager(settingsStub);
+    const mockPi = { registerProvider: vi.fn(), unregisterProvider: vi.fn() };
+    await serverManager.update(mockPi as any);
+
+    const eventManager = new EventManager(serverManager, settingsStub);
+
+    // Second scan adds serverB — no manager re-construction
+    vi.mocked(settingsStub.resolveServers).mockReturnValue([serverA, serverB]);
+    await serverManager.update(mockPi as any);
+
+    // onBeforeProviderRequest sees the new server's models
+    const ctx = createMockCtx("medium");
+    const result = (await eventManager.onBeforeProviderRequest(
+      { payload: createPayload("model-b") } as any,
+      ctx,
+    )) as Record<string, unknown>;
+    expect(result.thinking_budget_tokens).toBe(THINKING_BUDGETS.medium);
+
+    // onModelSelect sees the new server's models too
+    vi.mocked(settingsStub.resolveReactToModelSelect).mockReturnValue(true);
+    const selectCtx = createMockCtx();
+    await eventManager.onModelSelect(
+      { model: { provider: serverB.providerId, id: "model-b" } } as any,
+      selectCtx,
+    );
+    expect(selectCtx.ui.notify).toHaveBeenCalledWith(
+      "Loading model-b...",
+      "info",
+    );
   });
 });

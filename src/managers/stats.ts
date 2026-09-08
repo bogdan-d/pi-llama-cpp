@@ -173,7 +173,7 @@ export class StatsManager {
   private hasUIRef = false;
   private originalFetch: typeof fetch | null = null;
 
-  constructor(private readonly urls: string[]) {}
+  constructor(private readonly getUrls: () => readonly string[]) {}
 
   /**
    * Wires up fetch interception and UI lifecycle events.
@@ -727,7 +727,7 @@ export class StatsManager {
     if (typeof url !== "string") return false;
     if (!url.includes("/chat/completions")) return false;
 
-    return this.urls.some((baseUrl) => {
+    return this.getUrls().some((baseUrl) => {
       const origin = baseUrl.replace(/\/+$/, "");
       return url === origin || url.startsWith(`${origin}/`);
     });

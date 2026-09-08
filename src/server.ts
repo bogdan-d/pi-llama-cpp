@@ -1,10 +1,8 @@
 import { ApiClient } from "./api/client";
 import {
   API_KEY_PLACEHOLDER,
-  POLLING_TIMEOUT,
   PROVIDER_NAME,
   PROVIDER_PREFIX,
-  SERVER_TIMEOUT,
 } from "./constants";
 import { Mode } from "./enums/mode";
 import { ServerStatus } from "./enums/serverStatus";
@@ -14,25 +12,67 @@ import {
   PropsEndpoint,
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
-import { settings } from "./managers/settings";
+import type { ServerOptions } from "./interfaces/server";
+import type { LlamaSettingsManager } from "./managers/settings";
 import { BaseModel } from "./models/baseModel";
 import { LegacyModel } from "./models/legacyModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
 
+/**
+ * Optional constructor collaborators for {@link Server} — the seam tests use
+ * to run the real Server against fake clients.
+ *
+ * Both are factories because their arguments only exist around construction:
+ * the API key is (re-)resolved by the Server, and SSEManager needs its owner.
+ * Factories must stay pure functions of their arguments — `initialize()`
+ * re-invokes both on every scan (the ApiClient rebuild picks up a fresh key,
+ * by design), so captured per-server state would leak across re-scans.
+ */
+export type ServerDeps = {
+  createApiClient?: (apiKey: string) => ApiClient;
+  createSSEManager?: (server: Server, apiKey: string) => SSEManager;
+};
+
 export class Server {
   public readonly models: BaseModel[] = [];
-  private apiClient!: ApiClient;
+  private apiClient: ApiClient;
   private sse!: SSEManager;
 
   constructor(
-    readonly baseUrl: string,
-    private readonly customId?: string,
-    private readonly customName?: string,
-    readonly serverTimeout: number = SERVER_TIMEOUT,
-    readonly pollingTimeout: number = POLLING_TIMEOUT,
-  ) {}
+    private readonly settings: LlamaSettingsManager,
+    private readonly options: ServerOptions,
+    private readonly deps: ServerDeps = {},
+  ) {
+    // Eager client: `isReady` may run before `initialize()` (health probing
+    // in ServerManager), so no lazy fallback is needed. initialize()
+    // rebuilds the client to re-resolve the API key.
+    this.apiClient =
+      deps.createApiClient?.(this.getApiKey()) ??
+      new ApiClient(options.baseUrl, this.getApiKey());
+  }
+
+  /** Base URL of this server endpoint. */
+  get baseUrl(): string {
+    return this.options.baseUrl;
+  }
+
+  /**
+   * Maximum time (ms) for server verification and SSE support probe.
+   * Resolved live from the injected settings manager.
+   */
+  get serverTimeout(): number {
+    return this.settings.resolveTimeouts().serverTimeout;
+  }
+
+  /**
+   * Maximum time (ms) to wait for model loading before giving up.
+   * Resolved live from the injected settings manager.
+   */
+  get pollingTimeout(): number {
+    return this.settings.resolveTimeouts().pollingTimeout;
+  }
 
   /**
    * Provides access to the SSE manager for direct subscriptions.
@@ -46,7 +86,7 @@ export class Server {
    * Uses custom ID if provided, otherwise falls back to URL-based ID.
    */
   get providerId(): string {
-    return this.customId ?? `${PROVIDER_PREFIX}=${this.baseUrl}`;
+    return this.options.customId ?? `${PROVIDER_PREFIX}=${this.baseUrl}`;
   }
 
   /**
@@ -54,8 +94,8 @@ export class Server {
    * Uses custom name as suffix if provided.
    */
   get providerName(): string {
-    if (this.customName) {
-      return `${PROVIDER_NAME} (${this.customName})`;
+    if (this.options.customName) {
+      return `${PROVIDER_NAME} (${this.options.customName})`;
     }
     return `${PROVIDER_NAME} (${this.baseUrl})`;
   }
@@ -68,12 +108,12 @@ export class Server {
    */
   getApiKey(): string {
     // Try custom ID first
-    if (this.customId) {
-      const key = settings.resolveApiKey(this.customId);
+    if (this.options.customId) {
+      const key = this.settings.resolveApiKey(this.options.customId);
       if (key !== API_KEY_PLACEHOLDER) return key;
     }
     // Fall back to URL-based ID
-    return settings.resolveApiKey(`${PROVIDER_PREFIX}=${this.baseUrl}`);
+    return this.settings.resolveApiKey(`${PROVIDER_PREFIX}=${this.baseUrl}`);
   }
 
   /**
@@ -81,11 +121,15 @@ export class Server {
    * Clears the cache first so we always fetch fresh data.
    */
   async initialize() {
-    const apiKey = await this.getApiKey();
-    this.apiClient = new ApiClient(this.baseUrl, apiKey);
-    this.sse = new SSEManager(this.baseUrl, apiKey, this.serverTimeout);
+    const apiKey = this.getApiKey();
+    this.apiClient =
+      this.deps.createApiClient?.(apiKey) ??
+      new ApiClient(this.baseUrl, apiKey);
+    this.sse =
+      this.deps.createSSEManager?.(this, apiKey) ??
+      new SSEManager(this, apiKey);
     const { data } = await this.fetchModels();
-    const mode = await this.detectServerMode();
+    const mode = await this.detectServerMode(data);
 
     // Setup models
     const modelCtor = {
@@ -94,22 +138,21 @@ export class Server {
       [Mode.SINGLE]: SingleModel,
     }[mode];
 
-    const models: BaseModel[] = data
-      .map((m) => new modelCtor(m, this))
-      .sort((a, b) => (a.id > b.id ? 1 : a.id === b.id ? 0 : -1));
+    const models: BaseModel[] = data.map((m) => new modelCtor(m, this));
 
     this.models.length = 0;
     this.models.push(...models);
   }
 
   /**
-   * Detects the mode of the server
+   * Detects the mode of the server from the models data already fetched by
+   * {@link initialize} — no second /v1/models round-trip.
    *
+   * @param data Models endpoint data fetched by initialize()
    * @returns The detected mode
    */
-  private async detectServerMode(): Promise<Mode> {
+  private async detectServerMode(data: ModelsEndpoint["data"]): Promise<Mode> {
     const { role } = await this.fetchServerProps();
-    const { data } = await this.fetchModels();
 
     if (role === "router") return Mode.ROUTER;
     if ("max_model_len" in data[0]) return Mode.LEGACY;
@@ -123,8 +166,6 @@ export class Server {
    * @returns The server status
    */
   async isReady(timeout: number): Promise<ServerStatus> {
-    this.apiClient ??= new ApiClient(this.baseUrl, await this.getApiKey());
-
     try {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), timeout),

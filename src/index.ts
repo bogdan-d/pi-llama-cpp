@@ -15,12 +15,12 @@ import { settings } from "./managers/settings";
 import { StatsManager } from "./managers/stats";
 
 export default async function (pi: ExtensionAPI) {
-  const servers = await settings.resolveServers();
-
-  const eventManager = new EventManager(servers);
-  const serverManager = new ServerManager(servers);
-  const commandManager = new CommandManager(serverManager);
-  const statsManager = new StatsManager(servers.map((s) => s.baseUrl));
+  const serverManager = new ServerManager(settings);
+  const eventManager = new EventManager(serverManager, settings);
+  const commandManager = new CommandManager(serverManager, settings);
+  const statsManager = new StatsManager(() =>
+    serverManager.servers.map((server) => server.baseUrl),
+  );
 
   // Register providers once at startup
   await serverManager.initialize(pi);

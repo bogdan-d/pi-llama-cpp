@@ -77,6 +77,7 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
     ],
     "reactToModelSelect": true,
     "autoloadOnMessage": false,
+    "sortBy": "asc",
     "pollingTimeout": 60000,
     "serverTimeout": 1000
   }
@@ -101,10 +102,56 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 | -------------------- | ------- | ------- | ------------------------------------------------------------- |
 | `reactToModelSelect` | boolean | `true`  | Load the model when you switch via Pi's model picker.         |
 | `autoloadOnMessage`  | boolean | `false` | Automatically load an unloaded model before sending a message |
+| `sortBy`             | string  | `"asc"` | Sort order for models (see below)                             |
 | `pollingTimeout`     | number  | `60000` | Max time (ms) to wait for model loading before giving up      |
 | `serverTimeout`      | number  | `1000`  | Timeout (ms) for server health checks and SSE probes          |
 
 > **Note:** `serverTimeout` controls individual HTTP request timeouts (health checks, SSE probe). `pollingTimeout` controls the total wait time for a model to finish loading. Increase `serverTimeout` for slow/high-latency servers, and `pollingTimeout` for large models or slow hardware.
+
+#### In-session settings menu
+
+Run `/models settings` to edit the scalar settings above without hand-editing JSON:
+
+- **Enter/Space** cycles the value under the cursor; **Esc** closes the menu.
+- Booleans toggle `on`/`off`, `sortBy` cycles through the sort orders, and the
+  timeouts cycle through presets (`pollingTimeout`: 15s/30s/60s/120s/300s,
+  `serverTimeout`: 500ms/1s/2s/5s/10s).
+- Changes are written to the **global** `~/.pi/agent/settings.json` only. If a
+  project `.pi/settings.json` defines the same key, its value keeps winning in
+  the merged view until you remove it there.
+- Boolean and sort changes apply immediately; timeout changes apply on the next
+  model load.
+- The `servers` list is edited with `/models servers` (see below).
+
+#### Server list editor
+
+Run `/models servers` to add, edit or remove entries of `llamaSettings.servers`
+without hand-editing JSON:
+
+- **↑/↓** moves the cursor, **Enter/e** edits the selected URL, **i** edits
+  its `id`, **n** its `name`, **a** adds a new entry, **d** deletes it
+  (after an "Are you sure?" confirmation — only **y** confirms;
+  **Enter** is ignored, **Esc/n** cancels), **Esc** closes the editor.
+- One URL per entry (`http://host:port`). Trailing slashes are stripped on
+  save; `;`-separated values are rejected — use separate entries instead.
+- Each change is written immediately to the **global**
+  `~/.pi/agent/settings.json`. If a project `.pi/settings.json` defines
+  `servers`, its list keeps winning in the merged view until you remove it
+  there.
+- Changes apply the next time providers are scanned — run `/models` to see
+  them. Additions, removals, and URL/`id`/`name` edits all take effect on
+  the next `/models`: new servers register their providers, removed ones
+  leave pi's registry immediately, and edited ones are re-registered with
+  the fresh config — no restart needed.
+- Limitation: a model already loading in the background on a removed or
+  edited server finishes loading, but its progress notifications stop;
+  re-select it from the (new) provider afterwards.
+- The editor shows a warning when the `LLAMA_SERVER_URL` environment variable
+  is set, since it overrides the configured servers.
+- Per-server `id`/`name` overrides can be edited with **i**/**n**; saving an
+  empty value clears the override. The list shows them as a
+  `(<id> - <name>)` suffix, falling back to the auto-detected
+  `llama-server=<url>` id when no custom `id` is set.
 
 #### Environment variable
 
@@ -209,17 +256,31 @@ The extension determines the context size as follows:
 
 ### Commands
 
-| Command          | Description                                                                        |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `/models`        | Browse your models with live status. Select a model to load, switch, or unload it. |
-| `/models info`   | Show detailed information for all available models at once.                        |
-| `/models unload` | Unload all loaded models at once.                                                  |
+| Command            | Description                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `/models`          | Browse your models with live status. Select a model to load, switch, or unload it. |
+| `/models info`     | Show detailed information for all available models at once.                        |
+| `/models unload`   | Unload all loaded models at once.                                                  |
+| `/models servers`  | Add, edit or remove llama.cpp server URLs via a TUI editor.                        |
+| `/models settings` | Open a menu to edit the scalar `llamaSettings` fields.                             |
 
 > **Note:** When a llama.cpp server is slow to respond, it will be skipped at startup with a warning. Run `/models` to retry without timeout and see all models.
 
 > **Note:** When a llama.cpp server is unreachable, `/models` displays an error notification with the configured server URL, but healthy servers continue to show their models.
 
 > **Note:** The `/models unload` command only makes sense in router mode.
+
+#### Model sorting
+
+The order of models in the `/models` menu is controlled by the `sortBy` setting:
+
+| Value         | Description                                                                             |
+| ------------- | --------------------------------------------------------------------------------------- |
+| `"asc"`       | Sort by model ID ascending (default)                                                    |
+| `"desc"`      | Sort by model ID descending                                                             |
+| `"asc-name"`  | Sort by model name ascending (ties broken by ID)                                        |
+| `"desc-name"` | Sort by model name descending (ties broken by ID)                                       |
+| `"api"`       | No sorting — models appear in the order returned by each server's `/v1/models` endpoint |
 
 ### Model Actions
 

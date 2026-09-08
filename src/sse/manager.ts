@@ -1,5 +1,5 @@
-import { POLLING_TIMEOUT, SERVER_TIMEOUT } from "../constants";
-import { SSEClient } from "./client";
+import type { Server } from "../server";
+import { SSEClient, buildSSEUrl } from "./client";
 import {
   DownloadProgressData,
   ProgressData,
@@ -25,16 +25,31 @@ export class SSEManager {
   private sseSupported: boolean | null = null;
 
   constructor(
-    private readonly baseUrl: string,
+    private readonly server: Server,
     private readonly apiKey: string,
-    readonly serverTimeout: number = SERVER_TIMEOUT,
   ) {}
+
+  /**
+   * Maximum time (ms) for server verification and SSE support probe.
+   * Delegates to the owning {@link Server}.
+   */
+  get serverTimeout(): number {
+    return this.server.serverTimeout;
+  }
+
+  /**
+   * Maximum time (ms) to wait for model loading before giving up.
+   * Delegates to the owning {@link Server}.
+   */
+  get pollingTimeout(): number {
+    return this.server.pollingTimeout;
+  }
 
   /**
    * The SSE endpoint URL.
    */
   private get sseEndpoint(): string {
-    return `${this.baseUrl}/models/sse`;
+    return `${this.server.baseUrl}/models/sse`;
   }
 
   /**
@@ -47,10 +62,7 @@ export class SSEManager {
     if (this.sseSupported !== null) return this.sseSupported;
 
     try {
-      let url = this.sseEndpoint;
-      if (this.apiKey) {
-        url = `${url}?api_key=${encodeURIComponent(this.apiKey)}`;
-      }
+      const url = buildSSEUrl(this.sseEndpoint, this.apiKey);
       const response = await fetch(url, {
         method: "GET",
         signal: AbortSignal.timeout(this.serverTimeout),
@@ -171,7 +183,7 @@ export class SSEManager {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`SSE status timeout for model: ${modelId}`)),
-        POLLING_TIMEOUT,
+        this.pollingTimeout,
       );
 
       this.subscribeToSSE(modelId, (event: SSEEvent) => {

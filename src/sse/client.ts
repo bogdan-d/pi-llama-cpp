@@ -2,6 +2,18 @@ import { POLLING_INTERVAL } from "../constants";
 import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 
 /**
+ * Builds the full SSE endpoint URL, appending the API key as a query
+ * parameter when one is set. Shared by {@link SSEClient} and
+ * {@link SSEManager.probeSSE} so the two can't drift.
+ */
+export const buildSSEUrl = (endpoint: string, apiKey?: string): string => {
+  if (apiKey) {
+    return `${endpoint}?api_key=${encodeURIComponent(apiKey)}`;
+  }
+  return endpoint;
+};
+
+/**
  * SSE client for llama-server's /models/sse endpoint.
  *
  * Uses a single shared EventSource per server instance.
@@ -13,6 +25,10 @@ export class SSEClient {
   private subscribers: Map<string, SSECallback> = new Map();
   private connected: boolean = false;
   private reconnecting: boolean = false; // tracks if EventSource auto-reconnect is in progress
+  /**
+   * Single shared slot — each setOnConnectFailed call overwrites the
+   * previous callback (see there for the constraint this imposes).
+   */
   private _onConnectFailed: (() => void) | null = null;
   private _hasReceivedEvents: boolean = false;
 
@@ -28,12 +44,16 @@ export class SSEClient {
   /**
    * Connects to the SSE endpoint.
    *
+   * No current caller consumes the result: `subscribe()` triggers the
+   * connection without awaiting it, and connection failures before the
+   * first event are surfaced through the `setOnConnectFailed` callback.
+   *
    * @returns true if the connection was established successfully
    */
   async connect(): Promise<boolean> {
     if (this.connected) return true;
 
-    const url = this.buildUrl();
+    const url = buildSSEUrl(this.sseEndpoint, this.apiKey);
 
     try {
       this.eventSource = new EventSource(url);
@@ -41,11 +61,6 @@ export class SSEClient {
       this.connected = false;
       return false;
     }
-
-    this.eventSource.onopen = () => {
-      this.connected = true;
-      this.reconnecting = false;
-    };
 
     this.eventSource.onerror = () => {
       // EventSource will auto-reconnect; we just track state
@@ -91,6 +106,13 @@ export class SSEClient {
    * Sets a callback to be called when the connection fails before
    * any event is received. Useful for rejecting promises early.
    *
+   * Single shared slot: each call overwrites the previous callback, so at
+   * most one caller may depend on it at a time. The only caller today is
+   * `SSEManager.subscribeToStatus`, which must therefore not be invoked
+   * twice concurrently on the same client — the second registration would
+   * take over the failure signal and the first promise would only reject
+   * via its own timeout.
+   *
    * @param callback - Called once when connection fails
    */
   setOnConnectFailed(callback: () => void): void {
@@ -127,16 +149,6 @@ export class SSEClient {
     }
     this.connected = false;
     this.subscribers.clear();
-  }
-
-  /**
-   * Builds the full URL with optional API key query param.
-   */
-  private buildUrl(): string {
-    if (this.apiKey) {
-      return `${this.sseEndpoint}?api_key=${encodeURIComponent(this.apiKey)}`;
-    }
-    return this.sseEndpoint;
   }
 
   /**

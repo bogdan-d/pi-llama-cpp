@@ -1,3 +1,4 @@
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   API_KEY_PLACEHOLDER,
@@ -17,6 +18,7 @@ const mockSettingsManager = vi.hoisted(() => ({
   getGlobalSettings: vi.fn(),
   getDefaultThinkingLevel: vi.fn(),
   getThinkingBudgets: vi.fn(),
+  reload: vi.fn(),
 }));
 
 // Mock getAgentDir, readStoredCredential, and SettingsManager before importing resolver
@@ -31,6 +33,8 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
 
 vi.mock("node:fs/promises", () => ({
   readFile: vi.fn(),
+  writeFile: vi.fn(),
+  rename: vi.fn(),
 }));
 
 // Import mocked modules
@@ -130,6 +134,34 @@ describe("URL resolution fallback chain", () => {
     const result = settings.resolveUrls();
 
     expect(result).toEqual(["http://first:8080", "http://second:9090"]);
+  });
+
+  it("should drop env URLs without an http(s) scheme, warn, and fall through", async () => {
+    process.env.LLAMA_SERVER_URL = "127.0.0.1:8080";
+
+    const result = settings.resolveUrls();
+
+    expect(result).toEqual([LLAMA_SERVER_URL]);
+    expect(settings.takeWarnings()).toEqual([
+      "Ignoring invalid server URL '127.0.0.1:8080' (needs http(s)://)",
+    ]);
+    expect(settings.takeWarnings()).toEqual([]); // drained
+  });
+
+  it("should drop server entries without an http(s) scheme and warn", async () => {
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "127.0.0.1:8080" }, { url: "http://good:8080/" }],
+      },
+    });
+
+    const result = settings.resolveUrls();
+
+    expect(result).toEqual(["http://good:8080"]);
+    expect(settings.takeWarnings()).toEqual([
+      "Ignoring invalid server URL '127.0.0.1:8080' (needs http(s)://)",
+    ]);
+    expect(settings.takeWarnings()).toEqual([]); // drained
   });
 });
 
@@ -315,13 +347,16 @@ describe("API key resolution", () => {
 
 describe("Server with custom id", () => {
   it("should use custom id as providerId when provided", () => {
-    const server = new Server("http://127.0.0.1:8080", "my-custom-id");
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customId: "my-custom-id",
+    });
 
     expect(server.providerId).toEqual("my-custom-id");
   });
 
   it("should fall back to URL-based providerId when no custom id", () => {
-    const server = new Server("http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
 
     expect(server.providerId).toEqual(
       `${PROVIDER_PREFIX}=http://127.0.0.1:8080`,
@@ -329,13 +364,18 @@ describe("Server with custom id", () => {
   });
 
   it("should try custom id first in getApiKey(), then fall back to URL-based", () => {
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customId: "my-custom-id",
+    });
+
+    // Server construction resolves the key eagerly (ApiClient built there);
+    // clear so the assertions below observe only the explicit getApiKey() call
     vi.clearAllMocks();
     // Mock: custom id returns placeholder (no key found)
     mockReadStoredCredential
       .mockReturnValueOnce(API_KEY_PLACEHOLDER)
       .mockReturnValueOnce({ key: "fallback-key" });
-
-    const server = new Server("http://127.0.0.1:8080", "my-custom-id");
 
     const result = server.getApiKey();
 
@@ -350,7 +390,10 @@ describe("Server with custom id", () => {
   it("should return custom id key directly when found", () => {
     mockReadStoredCredential.mockReturnValue({ key: "custom-key" });
 
-    const server = new Server("http://127.0.0.1:8080", "my-custom-id");
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customId: "my-custom-id",
+    });
 
     const result = server.getApiKey();
 
@@ -361,27 +404,26 @@ describe("Server with custom id", () => {
 
 describe("Server with custom name", () => {
   it("should use custom name as suffix in providerName", () => {
-    const server = new Server(
-      "http://127.0.0.1:8080",
-      undefined,
-      "Remote Server",
-    );
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customName: "Remote Server",
+    });
 
     expect(server.providerName).toEqual(`Llama.cpp (Remote Server)`);
   });
 
   it("should fall back to URL-based name when no custom name", () => {
-    const server = new Server("http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
 
     expect(server.providerName).toEqual(`Llama.cpp (http://127.0.0.1:8080)`);
   });
 
   it("should use custom name even with custom id", () => {
-    const server = new Server(
-      "http://127.0.0.1:8080",
-      "my-custom-id",
-      "Remote Server",
-    );
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customId: "my-custom-id",
+      customName: "Remote Server",
+    });
 
     expect(server.providerId).toEqual("my-custom-id");
     expect(server.providerName).toEqual(`Llama.cpp (Remote Server)`);
@@ -407,6 +449,14 @@ describe("reactToModelSelect and autoloadOnMessage fallbacks", () => {
     const result = settings.resolveAutoloadOnMessage();
 
     expect(result).toBe(false);
+  });
+
+  it("should return 'asc' when sortBy is not set", async () => {
+    const { settings } = await import("../src/managers/settings");
+
+    const result = settings.resolveSortBy();
+
+    expect(result).toBe("asc");
   });
 
   it("should return user values when set", async () => {
@@ -632,5 +682,112 @@ describe("Thinking config resolution", () => {
         max: -1,
       }),
     );
+  });
+});
+
+describe("setLlamaSetting", () => {
+  const mockGetAgentDir = vi.mocked(getAgentDir);
+  const mockGetProjectSettings = vi.mocked(
+    mockSettingsManager.getProjectSettings,
+  );
+  const mockGetGlobalSettings = vi.mocked(
+    mockSettingsManager.getGlobalSettings,
+  );
+  const mockReload = vi.mocked(mockSettingsManager.reload);
+  const mockReadFile = vi.mocked(readFile);
+  const mockWriteFile = vi.mocked(writeFile);
+  const mockRename = vi.mocked(rename);
+
+  const SETTINGS_PATH = "/fake/agent/dir/settings.json";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAgentDir.mockReturnValue("/fake/agent/dir");
+    mockGetProjectSettings.mockReturnValue({});
+    mockGetGlobalSettings.mockReturnValue({});
+    mockReload.mockResolvedValue(undefined);
+    mockReadFile.mockResolvedValue("{}");
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+  });
+
+  it("should write the merged llamaSettings key atomically and reload", async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify(
+        { unrelated: true, llamaSettings: { reactToModelSelect: true } },
+        null,
+        2,
+      ),
+    );
+
+    await settings.setLlamaSetting("sortBy", "desc");
+
+    expect(mockWriteFile).toHaveBeenCalledTimes(1);
+    const [tmpPath, written, encoding] = mockWriteFile.mock.calls[0];
+    expect(tmpPath).toBe(`${SETTINGS_PATH}.tmp`);
+    expect(encoding).toBe("utf-8");
+    const parsed = JSON.parse(written as string);
+    expect(parsed).toEqual({
+      unrelated: true,
+      llamaSettings: { reactToModelSelect: true, sortBy: "desc" },
+    });
+    expect(mockRename).toHaveBeenCalledWith(
+      `${SETTINGS_PATH}.tmp`,
+      SETTINGS_PATH,
+    );
+    expect(mockReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("should reflect the new value in resolvers immediately after the write", async () => {
+    mockSettingsManager.reload.mockImplementation(async () => {
+      mockGetGlobalSettings.mockReturnValue({
+        llamaSettings: { sortBy: "desc" },
+      });
+    });
+
+    await settings.setLlamaSetting("sortBy", "desc");
+
+    expect(settings.resolveSortBy()).toBe("desc");
+  });
+
+  it("should reject and skip reload when the write fails", async () => {
+    mockWriteFile.mockRejectedValue(new Error("ENOSPC: simulated"));
+
+    await expect(settings.setLlamaSetting("sortBy", "desc")).rejects.toThrow(
+      "ENOSPC",
+    );
+    expect(mockReload).not.toHaveBeenCalled();
+  });
+
+  it("should reject and leave the file untouched when the JSON is invalid", async () => {
+    mockReadFile.mockResolvedValue("{ broken");
+
+    await expect(settings.setLlamaSetting("sortBy", "desc")).rejects.toThrow(
+      /Cannot parse/,
+    );
+    expect(mockWriteFile).not.toHaveBeenCalled();
+    expect(mockReload).not.toHaveBeenCalled();
+  });
+
+  it("should persist booleans and numbers with type fidelity", async () => {
+    await settings.setLlamaSetting("reactToModelSelect", false);
+
+    const [, firstWrite] = mockWriteFile.mock.calls[0];
+    expect(JSON.parse(firstWrite as string)).toEqual({
+      llamaSettings: { reactToModelSelect: false },
+    });
+
+    await settings.setLlamaSetting("pollingTimeout", 120000);
+
+    const [, secondWrite] = mockWriteFile.mock.calls[1];
+    expect(JSON.parse(secondWrite as string)).toEqual({
+      llamaSettings: { pollingTimeout: 120000 },
+    });
+  });
+
+  it("should still construct the manager without arguments", async () => {
+    const { LlamaSettingsManager } = await import("../src/managers/settings");
+
+    expect(() => new LlamaSettingsManager()).not.toThrow();
   });
 });

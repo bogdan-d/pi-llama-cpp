@@ -10,15 +10,32 @@ import {
   POLLING_TIMEOUT,
   REACT_TO_MODEL_SELECT,
   SERVER_TIMEOUT,
+  SETTINGS_KEY,
+  SORT_BY,
   THINKING_BUDGETS,
+  type SortBy,
 } from "../constants";
-import { LlamaSettings } from "../interfaces/settings";
+import { LlamaServer, LlamaSettings } from "../interfaces/settings";
 import { Server } from "../server";
-
-const SETTINGS_KEY = "llamaSettings";
+import { SettingsStore } from "../utils/settingsStore";
+import { isValidServerUrl, normalizeUrl } from "../utils/urls";
 
 export class LlamaSettingsManager {
   private settingsManager = SettingsManager.create(process.cwd());
+
+  constructor(private readonly store: SettingsStore = new SettingsStore()) {}
+
+  /** Warnings collected during URL resolution (dropped invalid entries). */
+  private warnings: string[] = [];
+
+  /**
+   * Returns and clears warnings collected during URL resolution.
+   */
+  takeWarnings(): string[] {
+    const warnings = [...this.warnings];
+    this.warnings.length = 0;
+    return warnings;
+  }
 
   /**
    * Convenience getter for merged project/global settings
@@ -36,6 +53,14 @@ export class LlamaSettingsManager {
    */
   private get llamaSettings(): LlamaSettings {
     return this.mergedSettings[SETTINGS_KEY] ?? {};
+  }
+
+  /**
+   * Convenience getter for the merged `servers` list (project overrides
+   * global, per-key merge)
+   */
+  get llamaServers(): LlamaServer[] {
+    return this.llamaSettings.servers ?? [];
   }
 
   /**
@@ -99,17 +124,27 @@ export class LlamaSettingsManager {
 
   /**
    * Parses a raw URL string into an array of cleaned URLs.
-   * Splits on semicolons, trims whitespace, filters empty strings,
-   * and strips trailing slashes.
+   * Splits on semicolons, trims whitespace, filters empty strings, strips
+   * trailing slashes, and drops entries without an http(s) scheme —
+   * collecting a warning for each dropped entry (same validation the
+   * `/models servers` editor applies).
    *
    * @returns A sanitized URL
    */
   private parseUrls(raw: string): string[] {
     return raw
       .split(";")
-      .map((u) => u.trim())
-      .filter((u) => u.length > 0)
-      .map((u) => u.replace(/\/+$/, ""));
+      .map(normalizeUrl)
+      .filter((u) => {
+        if (u.length === 0) return false;
+        if (!isValidServerUrl(u)) {
+          this.warnings.push(
+            `Ignoring invalid server URL '${u}' (needs http(s)://)`,
+          );
+          return false;
+        }
+        return true;
+      });
   }
 
   /**
@@ -121,19 +156,16 @@ export class LlamaSettingsManager {
    * @returns A list of Server objects
    */
   resolveServers(): Server[] {
-    const { pollingTimeout, serverTimeout } = this.resolveTimeouts();
     const urls = this.resolveUrls();
     const serverConfigs = this.llamaSettings.servers ?? [];
 
     return urls.map((url) => {
       const config = serverConfigs.find((s) => s.url === url);
-      return new Server(
-        url,
-        config?.id,
-        config?.name,
-        serverTimeout,
-        pollingTimeout,
-      );
+      return new Server(this, {
+        baseUrl: url,
+        customId: config?.id,
+        customName: config?.name,
+      });
     });
   }
 
@@ -197,6 +229,36 @@ export class LlamaSettingsManager {
       pollingTimeout: this.llamaSettings.pollingTimeout ?? POLLING_TIMEOUT,
       serverTimeout: this.llamaSettings.serverTimeout ?? SERVER_TIMEOUT,
     };
+  }
+
+  /**
+   * Resolves the sort order for model lists.
+   *
+   * @returns The sort order: "asc", "desc", "asc-name", "desc-name", or "api"
+   */
+  resolveSortBy(): SortBy {
+    return this.llamaSettings.sortBy ?? SORT_BY;
+  }
+
+  /**
+   * Persists one llamaSettings field to the global settings file and
+   * reloads the in-memory settings so resolvers see the change immediately.
+   *
+   * Rejects if the file can't be read (e.g. invalid JSON) or written —
+   * in-memory state stays consistent (reload only on success).
+   */
+  async setLlamaSetting<K extends keyof LlamaSettings>(
+    key: K,
+    value: LlamaSettings[K],
+  ): Promise<void> {
+    await this.store.updateKey(SETTINGS_KEY, (current) => {
+      const merged =
+        typeof current === "object" && current !== null
+          ? (current as Record<string, unknown>)
+          : {};
+      return { ...merged, [key]: value };
+    });
+    await this.settingsManager.reload();
   }
 }
 

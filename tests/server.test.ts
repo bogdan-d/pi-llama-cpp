@@ -1,29 +1,36 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POLLING_TIMEOUT, SERVER_TIMEOUT } from "../src/constants";
 import { ServerStatus } from "../src/enums/serverStatus";
+import type { LlamaSettingsManager } from "../src/managers/settings";
 import { Server } from "../src/server";
-import { createMockServer, mockRpc } from "./mocks";
+import { createMockServer, makeSettingsStub, mockRpc } from "./mocks";
+
+// Injected into every real Server below; fresh per test so per-case
+// overrides never leak. The Server constructor resolves the API key eagerly
+// (ApiClient built there) — the stub's placeholder key is never consumed.
+let settings: LlamaSettingsManager;
 
 beforeEach(() => {
   mockRpc.mockClear();
+  settings = makeSettingsStub();
 });
 
 describe("Server providerId", () => {
   it("should generate a unique provider ID from baseUrl", () => {
-    const server = new Server("http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
     expect(server.providerId).toBe("llama-server=http://127.0.0.1:8080");
   });
 
   it("should generate different IDs for different baseUrls", () => {
-    const server1 = new Server("http://127.0.0.1:8080");
-    const server2 = new Server("http://127.0.0.1:8081");
+    const server1 = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
+    const server2 = new Server(settings, { baseUrl: "http://127.0.0.1:8081" });
     expect(server1.providerId).not.toBe(server2.providerId);
   });
 });
 
 describe("Server providerName", () => {
   it("should generate a human-readable provider name", () => {
-    const server = new Server("http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
     expect(server.providerName).toBe("Llama.cpp (http://127.0.0.1:8080)");
   });
 });
@@ -148,46 +155,41 @@ describe("Server postRequest", () => {
 });
 
 describe("Server timeouts", () => {
-  it("should use default timeouts when not provided", () => {
-    const server = new Server("http://127.0.0.1:8080");
+  it("should resolve timeouts from the injected settings", () => {
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
 
     expect(server.serverTimeout).toBe(SERVER_TIMEOUT);
     expect(server.pollingTimeout).toBe(POLLING_TIMEOUT);
   });
 
-  it("should accept custom serverTimeout", () => {
-    const server = new Server(
-      "http://127.0.0.1:8080",
-      undefined,
-      undefined,
-      3000,
-    );
+  it("should return resolved custom values", () => {
+    vi.mocked(settings.resolveTimeouts).mockReturnValue({
+      pollingTimeout: 90000,
+      serverTimeout: 2000,
+    });
 
-    expect(server.serverTimeout).toBe(3000);
+    const server = new Server(settings, {
+      baseUrl: "http://127.0.0.1:8080",
+      customId: "my-id",
+      customName: "My Server",
+    });
+
+    expect(server.pollingTimeout).toBe(90000);
   });
 
-  it("should accept custom pollingTimeout", () => {
-    const server = new Server(
-      "http://127.0.0.1:8080",
-      undefined,
-      undefined,
-      1000,
-      120000,
-    );
+  it("should read timeouts live from settings", () => {
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
 
+    vi.mocked(settings.resolveTimeouts).mockReturnValue({
+      pollingTimeout: 120000,
+      serverTimeout: 3000,
+    });
     expect(server.pollingTimeout).toBe(120000);
-  });
 
-  it("should accept both custom timeouts", () => {
-    const server = new Server(
-      "http://127.0.0.1:8080",
-      "my-id",
-      "My Server",
-      2000,
-      90000,
-    );
-
-    expect(server.serverTimeout).toBe(2000);
+    vi.mocked(settings.resolveTimeouts).mockReturnValue({
+      pollingTimeout: 90000,
+      serverTimeout: 2000,
+    });
     expect(server.pollingTimeout).toBe(90000);
   });
 });

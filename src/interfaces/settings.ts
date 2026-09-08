@@ -1,7 +1,9 @@
+import type { SortBy } from "../constants";
+
 /**
  * A description of a server in the "llamaSettings" key
  */
-interface LlamaServer {
+export interface LlamaServer {
   /**
    * The URL of the llama.cpp server.
    */
@@ -29,14 +31,16 @@ interface LlamaServer {
  *   }],
  *   "reactToModelSelect": true
  *   "autoloadOnMessage": false
+ *   "sortBy": "asc"
  * }
 }
  */
 export interface LlamaSettings {
   /**
    * List of servers to connect to.
+   * @default []
    */
-  servers: LlamaServer[];
+  servers?: LlamaServer[];
   /**
    * Whether to react to model selection events by loading the model.
    * @default true
@@ -57,4 +61,9 @@ export interface LlamaSettings {
    * @default 1000
    */
   serverTimeout?: number;
+  /**
+   * How to sort models in the /models command.
+   * @default "asc"
+   */
+  sortBy?: SortBy;
 }

@@ -1,15 +1,27 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { API_TYPE, PROVIDER_NAME } from "../constants";
+import { API_TYPE, PROVIDER_NAME, type SortBy } from "../constants";
 import { ServerStatus } from "../enums/serverStatus";
 import { BaseModel } from "../models/baseModel";
 import { Server } from "../server";
-import { settings } from "./settings";
+import type { LlamaSettingsManager } from "./settings";
+
+/** Model-list comparator: negative if a sorts first, positive if b does. */
+type ModelComparator = (a: BaseModel, b: BaseModel) => number;
 
 export class ServerManager {
+  constructor(private readonly settings: LlamaSettingsManager) {}
   readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
+  private readonly serverList: Server[] = [];
 
-  constructor(private readonly servers: Server[]) {}
+  /**
+   * Live view of the server list. `update()` re-derives the list from
+   * settings on every scan (in place), so `/models servers` edits apply
+   * without a restart.
+   */
+  get servers(): readonly Server[] {
+    return this.serverList;
+  }
 
   /**
    * Verifies reachability of servers and registers the providers
@@ -18,7 +30,7 @@ export class ServerManager {
    */
   async initialize(pi: ExtensionAPI) {
     // Register the providers with the configured server timeout
-    const { serverTimeout } = settings.resolveTimeouts();
+    const { serverTimeout } = this.settings.resolveTimeouts();
     await this.update(pi, serverTimeout);
   }
 
@@ -31,6 +43,33 @@ export class ServerManager {
    */
   async update(pi: ExtensionAPI, timeout?: number) {
     this.failedUrls.length = 0;
+
+    // Surface warnings from strict URL parsing (dropped invalid entries)
+    this.warnings.push(...this.settings.takeWarnings());
+
+    // Re-derive the server list from settings so `/models servers` edits
+    // (add / remove / URL / id / name) apply on the next scan
+    const fresh: Server[] = [];
+    const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
+    for (const server of this.settings.resolveServers()) {
+      if (seen.has(server.providerId)) continue;
+      seen.add(server.providerId);
+      fresh.push(server);
+    }
+
+    // Unregister providers that disappeared (removed or edited away);
+    // no-op for providers that were never registered
+    for (const old of this.servers) {
+      if (fresh.some((f) => f.providerId === old.providerId)) continue;
+      pi.unregisterProvider(old.providerId);
+      // Optional chain is intentional despite the non-optional type: `sse`
+      // is undefined until initialize() runs (async-constructor hack — see Server)
+      old.sseManager?.disconnect();
+    }
+
+    // Replace in place so the live `servers` view stays valid (D1)
+    this.serverList.length = 0;
+    this.serverList.push(...fresh);
 
     const registrableServers = timeout
       ? await this.findRegistrableServers(timeout)
@@ -95,7 +134,7 @@ export class ServerManager {
    */
   private async registerProvider(server: Server, pi: ExtensionAPI) {
     const { baseUrl, models, providerId, providerName } = server;
-    const apiKey = await server.getApiKey();
+    const apiKey = server.getApiKey();
     const modelConfigs = await Promise.all(
       models.map((m) => m.toProviderConfig()),
     );
@@ -123,26 +162,58 @@ export class ServerManager {
    * Returns the server for a given model.
    *
    * @param model - The model to find the server for
-   * @returns The server containing the model
+   * @returns The server containing the model, or `undefined` when no
+   * current server matches (e.g. removed while a model was loading)
    */
-  getServer(model: BaseModel): Server {
-    return this.servers.find((s) => s.baseUrl === model.serverUrl)!;
+  getServer(model: BaseModel): Server | undefined {
+    return this.servers.find((s) => s.baseUrl === model.serverUrl);
   }
 
   /**
-   * Returns all models from all servers.
+   * Returns all models from all servers, sorted by the configured sort mode.
    *
    * @returns Flat array of all models across all servers
    */
   getAllModels(): BaseModel[] {
-    const response = [];
+    const sortBy = this.settings.resolveSortBy();
+    const allModels = this.servers.flatMap((s) => s.models);
 
-    for (const { models } of this.servers) {
-      for (const model of models) {
-        response.push(model);
-      }
-    }
+    if (sortBy === "api") return allModels;
 
-    return response;
+    return allModels.sort(ServerManager.SORTERS[sortBy]);
   }
+
+  private static sortByIdAsc(a: BaseModel, b: BaseModel): number {
+    return a.id.localeCompare(b.id);
+  }
+
+  private static sortByIdDesc(a: BaseModel, b: BaseModel): number {
+    return b.id.localeCompare(a.id);
+  }
+
+  /** Name ascending, with ID as tiebreaker. */
+  private static sortByNameAsc(a: BaseModel, b: BaseModel): number {
+    const cmp = a.name.localeCompare(b.name);
+    return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
+  }
+
+  /** Name descending, with ID as tiebreaker. */
+  private static sortByNameDesc(a: BaseModel, b: BaseModel): number {
+    const cmp = b.name.localeCompare(a.name);
+    return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
+  }
+
+  /**
+   * Comparators for each sort mode except "api", which preserves server
+   * order (short-circuited in {@link ServerManager.getAllModels}).
+   */
+  private static readonly SORTERS: Record<
+    Exclude<SortBy, "api">,
+    ModelComparator
+  > = {
+    asc: ServerManager.sortByIdAsc,
+    desc: ServerManager.sortByIdDesc,
+    "asc-name": ServerManager.sortByNameAsc,
+    "desc-name": ServerManager.sortByNameDesc,
+  };
 }

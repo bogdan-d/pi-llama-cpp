@@ -36,7 +36,7 @@ function createManager(): {
   messages: (string | undefined)[];
   widgetSets: { key: string; content: string[] | undefined }[];
 } {
-  const manager = new StatsManager(["http://127.0.0.1:8080"]);
+  const manager = new StatsManager(() => ["http://127.0.0.1:8080"]);
   const messages: (string | undefined)[] = [];
   const widgetSets: { key: string; content: string[] | undefined }[] = [];
   const seam = manager as unknown as {
@@ -61,6 +61,17 @@ beforeEach(() => {
 });
 
 describe("StatsManager display lifecycle", () => {
+  it("tracks server URL changes after construction", () => {
+    let urls = ["http://localhost:8080"];
+    const manager = new StatsManager(() => urls);
+    const matches = (url: string) => manager["isLlamaCppRequest"](url);
+
+    expect(matches("http://localhost:8080/v1/chat/completions")).toBe(true);
+    urls = ["http://localhost:9090"];
+    expect(matches("http://localhost:8080/v1/chat/completions")).toBe(false);
+    expect(matches("http://localhost:9090/v1/chat/completions")).toBe(true);
+  });
+
   it("shows prefill progress, then generation, then final stats", async () => {
     const { manager, messages } = createManager();
 
