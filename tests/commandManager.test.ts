@@ -1,4 +1,5 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "../src/enums/action";
@@ -10,8 +11,7 @@ import {
 } from "../src/managers/command";
 import { ServerManager } from "../src/managers/server";
 import type { LlamaSettingsManager } from "../src/managers/settings";
-import type { Server } from "../src/server";
-import { ServerListEditor } from "../src/ui/serverListEditor";
+import { ServerSettingsList } from "../src/ui/serverSettingsList";
 import {
   createMockCtx,
   createMockModel,
@@ -22,6 +22,7 @@ import {
 } from "./mocks";
 
 beforeEach(() => {
+  initTheme();
   vi.clearAllMocks();
   mockRpc.mockResolvedValue({ data: [] });
 });
@@ -42,12 +43,13 @@ describe("CommandManager", () => {
   describe("getArgumentCompletions", () => {
     it("should provide completions for /models", () => {
       const completions = commandManager.getArgumentCompletions("");
-      expect(completions).toHaveLength(4);
+      expect(completions).toHaveLength(5);
       expect(completions?.map((c) => c.value)).toEqual([
         "info",
         "unload",
-        "servers",
         "settings",
+        "servers",
+        "overrides",
       ]);
     });
 
@@ -64,7 +66,7 @@ describe("CommandManager", () => {
 
     it("should provide the server/settings completions by prefix", () => {
       const completions = commandManager.getArgumentCompletions("s");
-      expect(completions?.map((c) => c.value)).toEqual(["servers", "settings"]);
+      expect(completions?.map((c) => c.value)).toEqual(["settings", "servers"]);
     });
   });
 
@@ -77,7 +79,7 @@ describe("CommandManager", () => {
         models: [model1, model2],
       });
       const unloadSettings = makeSettingsStub({
-        resolveServers: vi.fn((): Server[] => [server]),
+        resolveServers: vi.fn(async () => [server]),
       });
       serverManager = new ServerManager(unloadSettings);
       commandManager = new CommandManager(serverManager, unloadSettings);
@@ -107,7 +109,7 @@ describe("CommandManager", () => {
         models: [model1, model2],
       });
       const infoSettings = makeSettingsStub({
-        resolveServers: vi.fn((): Server[] => [server]),
+        resolveServers: vi.fn(async () => [server]),
       });
       serverManager = new ServerManager(infoSettings);
       commandManager = new CommandManager(serverManager, infoSettings);
@@ -133,8 +135,8 @@ describe("CommandManager", () => {
       expect(formatMs(1500)).toBe("1500ms");
     });
 
-    it("should build one item per editable scalar field", () => {
-      const items = buildSettingsItems(settingsStub);
+    it("should build one item per editable scalar field", async () => {
+      const items = await buildSettingsItems(settingsStub);
       expect(items.map((i) => i.id)).toEqual([
         "reactToModelSelect",
         "autoloadOnMessage",
@@ -220,7 +222,9 @@ describe("CommandManager", () => {
         matches: vi.fn(
           (data: string, name: string) =>
             (data === ENTER && name === "tui.select.confirm") ||
-            (data === ESC && name === "tui.select.cancel"),
+            (data === ESC && name === "tui.select.cancel") ||
+            (data === "\x1b[A" && name === "tui.select.up") ||
+            (data === "\x1b[B" && name === "tui.select.down"),
         ),
       }) as unknown as KeybindingsManager;
 
@@ -256,7 +260,7 @@ describe("CommandManager", () => {
 
     it("should wire the editor to the merged servers and the write path", async () => {
       const editorSettings = makeSettingsStub({
-        llamaServers: [{ url: "http://seed:1" }],
+        getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
       });
       commandManager = new CommandManager(serverManager, editorSettings);
       const ctx = createMockCtx(() => null);
@@ -269,7 +273,7 @@ describe("CommandManager", () => {
         theme: Theme,
         kb: KeybindingsManager,
         done: (result: undefined) => void,
-      ) => ServerListEditor;
+      ) => ServerSettingsList;
       const done = vi.fn();
       const editor = factory(
         { requestRender: vi.fn() } as unknown as TUI,
@@ -284,14 +288,20 @@ describe("CommandManager", () => {
         done,
       );
 
-      expect(editor).toBeInstanceOf(ServerListEditor);
+      expect(editor).toBeInstanceOf(ServerSettingsList);
       // Seeded with the merged snapshot
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
 
-      // Add a server through the editor → setLlamaSetting("servers", …)
+      // Add a server through the wizard (URL → ID → name) →
+      // setLlamaSetting("servers", …) persists only after the final step
       editor.handleInput("a");
+      expect(editor.render(80).join("\n")).toContain("Add server · 1/3");
       for (const ch of "http://new:2") editor.handleInput(ch);
       editor.handleInput(ENTER);
+      expect(editor.render(80).join("\n")).toContain("Add server · 2/3");
+      editor.handleInput(ENTER); // skip optional ID
+      expect(editor.render(80).join("\n")).toContain("Add server · 3/3");
+      editor.handleInput(ENTER); // skip optional name → persist
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
         { url: "http://seed:1" },
@@ -301,6 +311,86 @@ describe("CommandManager", () => {
       // Esc closes the editor
       editor.handleInput(ESC);
       expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("should persist nothing when the add wizard is cancelled", async () => {
+      const editorSettings = makeSettingsStub({
+        getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
+      });
+      commandManager = new CommandManager(serverManager, editorSettings);
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+
+      const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
+        tui: TUI,
+        theme: Theme,
+        kb: KeybindingsManager,
+        done: (result: undefined) => void,
+      ) => ServerSettingsList;
+      const editor = factory(
+        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTheme(),
+        createMockKeybindings(),
+        vi.fn(),
+      );
+
+      // Walk to wizard step 2, then abort — nothing must be persisted
+      editor.handleInput("a");
+      for (const ch of "http://new:2") editor.handleInput(ch);
+      editor.handleInput(ENTER);
+      editor.handleInput(ESC);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+      // Back to the list view
+      expect(editor.render(80).join("\n")).toContain("http://seed:1");
+    });
+
+    it("should delete the selected server after confirming", async () => {
+      const editorSettings = makeSettingsStub({
+        getLlamaServers: vi.fn(async () => [
+          { url: "http://seed:1" },
+          { url: "http://doomed:2" },
+        ]),
+      });
+      commandManager = new CommandManager(serverManager, editorSettings);
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+
+      const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
+        tui: TUI,
+        theme: Theme,
+        kb: KeybindingsManager,
+        done: (result: undefined) => void,
+      ) => ServerSettingsList;
+      const editor = factory(
+        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTheme(),
+        createMockKeybindings(),
+        vi.fn(),
+      );
+
+      // Move to the second row and open the confirm dialog
+      editor.handleInput("\x1b[B");
+      editor.handleInput("d");
+      expect(editor.render(80).join("\n")).toContain(
+        'Delete "http://doomed:2"?',
+      );
+
+      // Esc keeps the server
+      editor.handleInput(ESC);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+
+      // Re-open and confirm the default "Delete" selection
+      editor.handleInput("d");
+      editor.handleInput(ENTER);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
+        { url: "http://seed:1" },
+      ]);
     });
   });
 
@@ -321,7 +411,7 @@ describe("CommandManager", () => {
         }),
       );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn((): Server[] => servers),
+        resolveServers: vi.fn(async () => servers),
       });
       const serverManager = new ServerManager(settingsStub);
       return {
@@ -439,7 +529,7 @@ describe("CommandManager", () => {
         baseUrl: "http://127.0.0.1:8081",
         models: [modelB],
       });
-      vi.mocked(settingsStub.resolveServers).mockReturnValue([
+      vi.mocked(settingsStub.resolveServers).mockResolvedValue([
         ...servers,
         serverB,
       ]);

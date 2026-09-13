@@ -1,3 +1,4 @@
+import type { ModelCost } from "@earendil-works/pi-ai";
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
 import { Mode } from "../enums/mode";
@@ -57,18 +58,24 @@ export abstract class BaseModel {
 
   /**
    * Whether the model is a reasoning model.
-   * Currently always returns true since there's no way to detect this from llama-server.
+   * An override's `reasoning` wins; otherwise defaults to `true`, since
+   * there's no way to detect this from llama-server.
    */
   get reasoning(): boolean {
-    return true;
+    return this.server.findOverrideForModel(this.id)?.reasoning ?? true;
   }
 
   /**
-   * Detects the capabilities of the model
+   * Detects the capabilities of the model.
+   * An override's `capabilities` fully replaces detection; otherwise the
+   * model's modalities are probed from the server.
    *
    * @returns An array of capabilities, as expected by Pi
    */
   async getCapabilities(): Promise<("text" | "image")[]> {
+    const overridden = this.server.findOverrideForModel(this.id)?.capabilities;
+    if (overridden) return overridden;
+
     try {
       // When loaded, this works alright
       const { modalities } = await this.server.fetchModelProps(this.id);
@@ -115,9 +122,16 @@ export abstract class BaseModel {
   /**
    * Gets the context size of a particular model.
    *
+   * An override's `contextSize` (when set and `> 0`) replaces detection;
+   * otherwise the value is autodetected from the server, falling back to
+   * {@link FALLBACK_CTX}. A stored `0` behaves as if the key were absent.
+   *
    * @returns The context size in tokens
    */
   async getContextSize(): Promise<number> {
+    const overridden = this.server.findOverrideForModel(this.id)?.contextSize;
+    if (overridden && overridden > 0) return overridden;
+
     try {
       const { data } = await this.server.fetchModels();
       const { n_ctx } = data.find((m) => m.id === this.id)?.meta!;
@@ -162,7 +176,18 @@ export abstract class BaseModel {
    * @returns A Pi configuration object
    */
   async toProviderConfig(): Promise<ProviderModelConfig> {
-    const response = {
+    const override = this.server.findOverrideForModel(this.id) ?? {};
+
+    // Merge the matched override's cost with zero defaults
+    const userCost = override.cost ?? {};
+    const cost: ModelCost = {
+      input: userCost.input ?? 0,
+      output: userCost.output ?? 0,
+      cacheRead: userCost.cacheRead ?? 0,
+      cacheWrite: userCost.cacheWrite ?? 0,
+    };
+
+    const response: ProviderModelConfig = {
       id: this.id,
       name: this.name,
       reasoning: this.reasoning,
@@ -176,9 +201,14 @@ export abstract class BaseModel {
       },
       input: await this.getCapabilities(),
       contextWindow: await this.getContextSize(),
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      maxTokens: await this.getContextSize(),
+      cost,
+      maxTokens: override.maxTokens ?? (await this.getContextSize()),
     };
+
+    // Add compat if the override specifies it
+    if (override.compat) {
+      response.compat = override.compat;
+    }
 
     return response;
   }
@@ -245,7 +275,7 @@ export abstract class BaseModel {
     interval: number = POLLING_INTERVAL,
   ): Promise<void> {
     if (timeout === undefined) {
-      timeout = this.server.pollingTimeout;
+      timeout = await this.server.getPollingTimeout();
     }
     while ((await this.getStatus()) === Status.LOADING) {
       // Force a timeout if we wasted too much time polling

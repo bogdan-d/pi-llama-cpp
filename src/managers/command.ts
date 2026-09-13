@@ -16,7 +16,8 @@ import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { LlamaSettings } from "../interfaces/settings";
 import { BaseModel } from "../models/baseModel";
-import { ServerListEditor } from "../ui/serverListEditor";
+import { createOverrideSettingsList } from "../ui/overrideSettingsList";
+import { ServerSettingsList } from "../ui/serverSettingsList";
 import { errorMessage } from "../utils/errors";
 import { EventManager } from "./events";
 import { ServerManager } from "./server";
@@ -67,14 +68,19 @@ const ARGUMENT_COMPLETIONS: AutocompleteItem[] = [
     description: "Unload all models",
   },
   {
+    value: "settings",
+    label: "settings",
+    description: "Configure llamaSettings",
+  },
+  {
     value: "servers",
     label: "servers",
     description: "Manage llama.cpp server URLs",
   },
   {
-    value: "settings",
-    label: "settings",
-    description: "Configure llamaSettings",
+    value: "overrides",
+    label: "overrides",
+    description: "Manage llama.cpp model overrides",
   },
 ];
 
@@ -98,17 +104,17 @@ const parseMs = (value: string): number =>
  * Builds the `SettingsList` items for `/models settings` from the current
  * (merged) values of the scalar `llamaSettings` fields.
  */
-export const buildSettingsItems = (
+export const buildSettingsItems = async (
   settings: LlamaSettingsManager,
-): SettingItem[] => {
-  const { pollingTimeout, serverTimeout } = settings.resolveTimeouts();
+): Promise<SettingItem[]> => {
+  const { pollingTimeout, serverTimeout } = await settings.resolveTimeouts();
 
   return [
     {
       id: Options.REACT_TO_MODEL_SELECT,
       label: "React to model selection",
       description: "Load the model when you pick it in Pi (immediate)",
-      currentValue: settings.resolveReactToModelSelect() ? "on" : "off",
+      currentValue: (await settings.resolveReactToModelSelect()) ? "on" : "off",
       values: ["on", "off"],
     },
     {
@@ -116,14 +122,14 @@ export const buildSettingsItems = (
       label: "Autoload on message",
       description:
         "Auto-load the selected model when you send a message (immediate)",
-      currentValue: settings.resolveAutoloadOnMessage() ? "on" : "off",
+      currentValue: (await settings.resolveAutoloadOnMessage()) ? "on" : "off",
       values: ["on", "off"],
     },
     {
       id: Options.SORT_BY,
       label: "Sort models by",
       description: "Order of models in /models (next open)",
-      currentValue: settings.resolveSortBy(),
+      currentValue: await settings.resolveSortBy(),
       values: [...SORT_VALUES],
     },
     {
@@ -210,9 +216,17 @@ export class CommandManager {
       return;
     }
 
-    // Servers editor: same — edits are passive until the next provider scan
+    // Servers editor: re-registers providers after editing so changes
+    // (add / remove / URL / id / name) apply immediately
     if (args === "servers") {
-      await this.runServersEditor(ctx);
+      await this.runServersEditor(ctx, pi);
+      return;
+    }
+
+    // Overrides editor: re-registers providers after editing so new
+    // overrides take effect on the next request
+    if (args === "overrides") {
+      await this.runOverridesEditor(ctx, pi);
       return;
     }
 
@@ -225,17 +239,15 @@ export class CommandManager {
     }
 
     if (args === "unload") {
-      await Promise.all(
-        this.serverManager.getAllModels().map((model) => model.unload()),
-      );
+      const models = await this.serverManager.getAllModels();
+      await Promise.all(models.map((model) => model.unload()));
       ctx.ui.notify(`Unloaded all ${PROVIDER_NAME} models`, "info");
       return;
     }
 
     if (args === "info") {
-      const infos = await Promise.all(
-        this.serverManager.getAllModels().map((model) => model.getInfo()),
-      );
+      const models = await this.serverManager.getAllModels();
+      const infos = await Promise.all(models.map((model) => model.getInfo()));
       ctx.ui.notify(ctx.ui.theme.fg("accent", infos.join("\n")), "info");
       return;
     }
@@ -250,7 +262,9 @@ export class CommandManager {
    *
    * Writes go to the global `~/.pi/agent/settings.json` via
    * `LlamaSettingsManager.setLlamaSetting()`; write errors are notified
-   * and leave the dialog open with values unchanged.
+   * and leave the dialog open with values unchanged. These settings
+   * (reactToModelSelect, autoloadOnMessage, sortBy, timeouts) do not
+   * require provider re-registration.
    */
   private async runSettingsMenu(ctx: ExtensionCommandContext): Promise<void> {
     if (ctx.mode !== "tui") {
@@ -261,7 +275,7 @@ export class CommandManager {
       return;
     }
 
-    const items = buildSettingsItems(this.settings);
+    const items = await buildSettingsItems(this.settings);
 
     await ctx.ui.custom<void>(
       (_tui, _theme, _kb, done) =>
@@ -284,16 +298,19 @@ export class CommandManager {
 
   /**
    * Runs the interactive servers editor for `llamaSettings.servers`.
-   * Enter/e edits the selected URL, i its id, n its name, a adds,
-   * d deletes (after a confirmation prompt); Esc closes.
+   * Enter on a server row drills into its field-edit submenu (URL/id/name);
+   * a adds a new server (inline Input), d deletes (after confirmation);
+   * Esc closes.
    *
    * Writes go to the global `~/.pi/agent/settings.json` via
    * `LlamaSettingsManager.setLlamaSetting()`; write errors are notified and
-   * the editor stays open with the pre-mutation list. List changes (add,
-   * remove, URL/`id`/`name` edits) apply the next time providers are
-   * scanned — run `/models` to see them.
+   * the editor stays open with the pre-mutation list. After closing,
+   * providers are re-registered so server changes apply immediately.
    */
-  private async runServersEditor(ctx: ExtensionCommandContext): Promise<void> {
+  private async runServersEditor(
+    ctx: ExtensionCommandContext,
+    pi: ExtensionAPI,
+  ): Promise<void> {
     if (ctx.mode !== "tui") {
       ctx.ui.notify(
         "/models servers requires an interactive session (TUI)",
@@ -302,19 +319,76 @@ export class CommandManager {
       return;
     }
 
-    const servers = this.settings.llamaServers;
+    const servers = await this.settings.getLlamaServers();
 
     await ctx.ui.custom<void>(
       (tui, theme, keybindings, done) =>
-        new ServerListEditor({
+        new ServerSettingsList({
           tui,
           theme,
           keybindings,
           servers,
           persist: (next) => this.settings.setLlamaSetting("servers", next),
-          done: () => done(undefined),
+          done: () => {
+            done(undefined);
+            // Re-register providers so the updated server list takes effect
+            this.serverManager.update(pi);
+          },
           onError: (message) => ctx.ui.notify(message, "error"),
         }),
+    );
+  }
+
+  /**
+   * Runs the interactive overrides editor for
+   * `llamaSettings.servers[].overrides`: a SettingsList of servers drilling
+   * down into each server's override entries (one row per pattern, with
+   * add/delete support). Within a server's entry list: Enter drills into
+   * the field-edit submenu; a adds, d deletes (after confirmation).
+   *
+   * Fields use a mix of finite (Enter to cycle) and infinite (Enter to
+   * type) editing:
+   *
+   * - Pattern / costs (input, output, cacheRead, cacheWrite): infinite —
+   *   Enter opens an Input for typing.
+   * - Capabilities: finite — Enter cycles between `text` and `text | image`.
+   * - Reasoning: finite — Enter cycles between `true` and `false`.
+   *
+   * Servers themselves are not managed here — use `/models servers`.
+   *
+   * Writes go to the global `~/.pi/agent/settings.json` via
+   * `LlamaSettingsManager.setLlamaSetting()`; write errors are notified and
+   * leave the values unchanged. After closing, providers are
+   * re-registered so new overrides take effect on the next request.
+   */
+  private async runOverridesEditor(
+    ctx: ExtensionCommandContext,
+    pi: ExtensionAPI,
+  ): Promise<void> {
+    if (ctx.mode !== "tui") {
+      ctx.ui.notify(
+        "/models overrides requires an interactive session (TUI)",
+        "warning",
+      );
+      return;
+    }
+
+    const servers = await this.settings.getLlamaServers();
+    await ctx.ui.custom<void>((tui, theme, keybindings, done) =>
+      createOverrideSettingsList({
+        tui,
+        theme,
+        keybindings,
+        servers,
+        persist: (next) => this.settings.setLlamaSetting("servers", next),
+        done: () => {
+          done(undefined);
+          // Re-register providers so the updated overrides take effect
+          this.serverManager.update(pi);
+        },
+        onError: (message) => ctx.ui.notify(message, "error"),
+        onChanged: () => {}, // no per-change notification needed
+      }),
     );
   }
 
@@ -334,7 +408,7 @@ export class CommandManager {
   ): Promise<void> {
     const event = await this.modelSelectionHandler(
       ctx,
-      this.serverManager.getAllModels(),
+      await this.serverManager.getAllModels(),
     );
 
     if (!event) return;
@@ -552,7 +626,10 @@ export class CommandManager {
           : [Action.SWITCH, ...base],
       [Status.LOADING]: [...base],
       [Status.FAILED]: [Action.RETRY, ...base],
-      [Status.SLEEPING]: [Action.SWITCH, Action.UNLOAD, ...base],
+      [Status.SLEEPING]:
+        model.mode === Mode.ROUTER
+          ? [Action.SWITCH, Action.UNLOAD, ...base]
+          : [Action.SWITCH, ...base],
       [Status.UNLOADED]: [Action.LOAD_AND_SWITCH, Action.LOAD, ...base],
       [Status.UNAUTHORIZED]: [...base],
     };

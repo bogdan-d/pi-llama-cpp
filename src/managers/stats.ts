@@ -688,6 +688,11 @@ export class StatsManager {
             const jsonStr = line.slice(6);
             if (jsonStr === "[DONE]") {
               dbg(`stream#${sid} chunk [DONE]`);
+              if (this.phase !== "idle" && this.phase !== "done") {
+                this.phase = "done";
+                this.maybeUpdateUi(true);
+                this.showFinalWidget();
+              }
               continue;
             }
 
@@ -733,7 +738,7 @@ export class StatsManager {
     });
   }
 
-  private ensureStreamOptions(init?: RequestInit): void {
+  private requestProgress(init?: RequestInit): void {
     try {
       const body = init?.body;
       if (!body) return;
@@ -743,12 +748,7 @@ export class StatsManager {
         ? JSON.parse(body)
         : { ...(body as unknown as Record<string, unknown>) };
 
-      if (!p.stream_options) {
-        p.stream_options = { include_usage: true };
-      } else if (!p.stream_options.include_usage) {
-        p.stream_options.include_usage = true;
-      }
-
+      // Pi owns stream_options, including omission for incompatible servers.
       if (p.stream && !p.return_progress) {
         p.return_progress = true;
       }
@@ -778,7 +778,7 @@ export class StatsManager {
       return this.originalFetch!(input, init);
     }
 
-    this.ensureStreamOptions(init);
+    this.requestProgress(init);
 
     const response = await this.originalFetch!(input, init);
     dbg(`fetch#${fid} response ok=${response.ok} hasBody=${!!response.body}`);

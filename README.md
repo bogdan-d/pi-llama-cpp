@@ -61,6 +61,18 @@ The recommended way to configure the extension is using the `llamaSettings` key.
 
 Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global):
 
+#### Minimal configuration
+
+```json
+{
+  "llamaSettings": {
+    "servers": [{ "url": "http://127.0.0.1:8080" }]
+  }
+}
+```
+
+#### Full configuration
+
 ```json
 {
   "llamaSettings": {
@@ -68,7 +80,8 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
       {
         "url": "http://127.0.0.1:8080",
         "id": "local",
-        "name": "Local Server"
+        "name": "Local Server",
+        "overrides": {}
       },
       {
         "url": "http://10.0.0.5:8080",
@@ -92,7 +105,7 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 | ------ | ------ | -------- | ---------------------------------------------------------------------------- |
 | `url`  | string | Yes      | The URL of the llama.cpp server                                              |
 | `id`   | string | No       | Custom provider ID (used for API key auth). Defaults to `llama-server=<url>` |
-| `name` | string | No       | Display name for the server in the UI (shown as `Llama.cpp — <name>`)        |
+| `name` | string | No       | Display name for the server in the UI (shown as `Llama.cpp (<name>)`)        |
 
 > **Note:** If you set a custom `id`, you can use it in `~/.pi/agent/auth.json`. The extension will also fall back to the URL-based ID if no key is found for the custom `id`.
 
@@ -110,48 +123,23 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 
 #### In-session settings menu
 
-Run `/models settings` to edit the scalar settings above without hand-editing JSON:
-
-- **Enter/Space** cycles the value under the cursor; **Esc** closes the menu.
-- Booleans toggle `on`/`off`, `sortBy` cycles through the sort orders, and the
-  timeouts cycle through presets (`pollingTimeout`: 15s/30s/60s/120s/300s,
-  `serverTimeout`: 500ms/1s/2s/5s/10s).
-- Changes are written to the **global** `~/.pi/agent/settings.json` only. If a
-  project `.pi/settings.json` defines the same key, its value keeps winning in
-  the merged view until you remove it there.
-- Boolean and sort changes apply immediately; timeout changes apply on the next
-  model load.
-- The `servers` list is edited with `/models servers` (see below).
+Run `/models settings` to edit the scalar settings above without hand-editing JSON. Changes are written to the **project** `.pi/settings.json` if it exists, otherwise to **global** `~/.pi/agent/settings.json`. Boolean and sort changes apply immediately; timeout changes apply on the next model load. The `servers` list is edited with `/models servers` (see below), and per-server model overrides with `/models overrides` (see [Model Overrides](#model-overrides)).
 
 #### Server list editor
 
 Run `/models servers` to add, edit or remove entries of `llamaSettings.servers`
-without hand-editing JSON:
+without hand-editing JSON. Each change is written immediately to the **project**
+`.pi/settings.json` if it exists, otherwise to **global**
+`~/.pi/agent/settings.json`.
 
-- **↑/↓** moves the cursor, **Enter/e** edits the selected URL, **i** edits
-  its `id`, **n** its `name`, **a** adds a new entry, **d** deletes it
-  (after an "Are you sure?" confirmation — only **y** confirms;
-  **Enter** is ignored, **Esc/n** cancels), **Esc** closes the editor.
-- One URL per entry (`http://host:port`). Trailing slashes are stripped on
-  save; `;`-separated values are rejected — use separate entries instead.
-- Each change is written immediately to the **global**
-  `~/.pi/agent/settings.json`. If a project `.pi/settings.json` defines
-  `servers`, its list keeps winning in the merged view until you remove it
-  there.
-- Changes apply the next time providers are scanned — run `/models` to see
-  them. Additions, removals, and URL/`id`/`name` edits all take effect on
-  the next `/models`: new servers register their providers, removed ones
-  leave pi's registry immediately, and edited ones are re-registered with
-  the fresh config — no restart needed.
-- Limitation: a model already loading in the background on a removed or
-  edited server finishes loading, but its progress notifications stop;
-  re-select it from the (new) provider afterwards.
-- The editor shows a warning when the `LLAMA_SERVER_URL` environment variable
-  is set, since it overrides the configured servers.
-- Per-server `id`/`name` overrides can be edited with **i**/**n**; saving an
-  empty value clears the override. The list shows them as a
-  `(<id> - <name>)` suffix, falling back to the auto-detected
-  `llama-server=<url>` id when no custom `id` is set.
+Changes take effect immediately after closing the editor: new servers
+register their providers, removed ones leave pi's registry right away,
+and edited ones are re-registered with the fresh config — no restart or
+`/models` needed.
+
+Limitation: a model already loading in the background on a removed or
+edited server finishes loading, but its progress notifications stop;
+re-select it from the (new) provider afterwards.
 
 #### Environment variable
 
@@ -247,6 +235,7 @@ llama-server --model path/to/model.gguf ...
 
 The extension determines the context size as follows:
 
+- A per-model `contextSize` override (see [Model Overrides](#model-overrides)) takes precedence over everything below
 - **Router mode**
   - When loaded, reads `meta.n_ctx` from the `/v1/models` endpoint
   - When not loaded, reads `--ctx-size` and/or `--fit-ctx` from the server arguments (which can also originate from the **presets.ini** file the llama.cpp server uses to load its models).
@@ -256,13 +245,14 @@ The extension determines the context size as follows:
 
 ### Commands
 
-| Command            | Description                                                                        |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| `/models`          | Browse your models with live status. Select a model to load, switch, or unload it. |
-| `/models info`     | Show detailed information for all available models at once.                        |
-| `/models unload`   | Unload all loaded models at once.                                                  |
-| `/models servers`  | Add, edit or remove llama.cpp server URLs via a TUI editor.                        |
-| `/models settings` | Open a menu to edit the scalar `llamaSettings` fields.                             |
+| Command             | Description                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `/models`           | Browse your models with live status. Select a model to load, switch, or unload it.      |
+| `/models info`      | Show detailed information for all available models at once.                             |
+| `/models unload`    | Unload all loaded models at once.                                                       |
+| `/models settings`  | Open a menu to edit the scalar `llamaSettings` fields.                                  |
+| `/models servers`   | Add, edit or remove llama.cpp server URLs via a TUI editor.                             |
+| `/models overrides` | Edit per-server model overrides (`llamaSettings.servers[].overrides`) via a TUI editor. |
 
 > **Note:** When a llama.cpp server is slow to respond, it will be skipped at startup with a warning. Run `/models` to retry without timeout and see all models.
 
@@ -272,15 +262,16 @@ The extension determines the context size as follows:
 
 #### Model sorting
 
-The order of models in the `/models` menu is controlled by the `sortBy` setting:
+The order of models in the `/models` menu is controlled by the `sortBy` setting.
+Servers maintain their order from `llamaSettings`; sorting applies **within each server**:
 
-| Value         | Description                                                                             |
-| ------------- | --------------------------------------------------------------------------------------- |
-| `"asc"`       | Sort by model ID ascending (default)                                                    |
-| `"desc"`      | Sort by model ID descending                                                             |
-| `"asc-name"`  | Sort by model name ascending (ties broken by ID)                                        |
-| `"desc-name"` | Sort by model name descending (ties broken by ID)                                       |
-| `"api"`       | No sorting — models appear in the order returned by each server's `/v1/models` endpoint |
+| Value         | Description                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `"asc"`       | Sort by model ID ascending (default)                                                                                      |
+| `"desc"`      | Sort by model ID descending                                                                                               |
+| `"asc-name"`  | Sort by model name ascending (ties broken by ID)                                                                          |
+| `"desc-name"` | Sort by model name descending (ties broken by ID)                                                                         |
+| `"api"`       | No sorting — models appear in the order returned by each server's `/v1/models` endpoint, servers in `llamaSettings` order |
 
 ### Model Actions
 
@@ -327,6 +318,129 @@ User-defined budgets can override the defaults by adding a `thinkingBudgets` obj
 Only `minimal`, `low`, `medium`, `high` and `xhigh` are configurable — `off` (0) and `max` (-1, unlimited) are fixed.
 The extension automatically injects the appropriate `thinking_budget_tokens` into each request payload based on the selected level.
 
+### Model Overrides
+
+A locally-run `llama.cpp` server is free, but you can simulate costs for budgeting, experimentation, or comparison purposes — and fine-tune what the extension reports about each model.
+
+This extension supports **per-model, per-server configuration** via the `overrides` key inside each server entry of `llamaSettings.servers`. Each entry can override the model's `cost`, `capabilities`, `reasoning`, `contextSize`, `maxTokens`, and `compat`, regardless of what the server reports.
+
+Add overrides to your server configuration:
+
+```json
+{
+  "llamaSettings": {
+    "servers": [
+      {
+        "url": "http://127.0.0.1:8080",
+        "overrides": {
+          "qwen-3.8-27b": {
+            "cost": { "input": 0.42, "output": 3.0, "cacheRead": 0.085 }
+          },
+          "glm-5.3-flash": {
+            "cost": { "input": 0.15, "output": 0.5, "cacheRead": 0.03 },
+            "capabilities": ["text"],
+            "reasoning": false,
+            "contextSize": 32768,
+            "maxTokens": 4096
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+Every field of an override is optional — absent fields fall back to what the extension detects (`capabilities`) or to its defaults (`reasoning: true`, zeroed cost).
+
+#### Override editor
+
+Run `/models overrides` to edit a server's override entries without hand-editing
+JSON. It opens a settings menu (same UX as `/models settings`).
+
+Each change is written immediately to the **project**
+`.pi/settings.json` if it exists, otherwise to **global**
+`~/.pi/agent/settings.json`.
+
+Overrides take effect on the next provider request after closing the editor —
+no `/reload` needed.
+
+#### Cost Fields
+
+Inside an override, the `cost` object accepts:
+
+| Field        | Type   | Description                         |
+| ------------ | ------ | ----------------------------------- |
+| `input`      | number | Cost per million input tokens       |
+| `output`     | number | Cost per million output tokens      |
+| `cacheRead`  | number | Cost per million cache read tokens  |
+| `cacheWrite` | number | Cost per million cache write tokens |
+
+All four fields are optional — unspecified fields default to zero.
+In the override editor, entering `0` (or leaving a field empty) removes the field from the settings — and the `cost` object itself once no fields remain — with the same effect as leaving it unset.
+
+#### Other Fields
+
+| Field          | Type             | Description                                                                                    |
+| -------------- | ---------------- | ---------------------------------------------------------------------------------------------- |
+| `capabilities` | array of strings | Pi capabilities for the model (`"text"`, `"image"`). Fully replaces the detected capabilities. |
+| `reasoning`    | boolean          | Whether the model is a reasoning model. Defaults to `true` when absent.                        |
+| `contextSize`  | number           | Override the model's context size in tokens. Falls back to autodetection when absent or `0`.   |
+| `maxTokens`    | number           | Override max generation tokens. Falls back to context size when absent or `0`.                 |
+| `compat`       | object           | OpenAI-compatible provider compatibility settings (see below).                                 |
+
+#### Compatibility (`compat`)
+
+The `compat` field accepts any subset of [OpenAI-compatible provider compatibility settings](https://github.com/earendil-works/pi/blob/main/packages/ai/src/types.ts) used by the `openai-completions` API. These control how the extension talks to your server — for example, disabling `developer` role support, choosing the thinking format, enabling Anthropic-style cache control, or setting thinking token budgets.
+
+Example:
+
+```json
+{
+  "llamaSettings": {
+    "servers": [
+      {
+        "url": "http://127.0.0.1:8080",
+        "overrides": {
+          "llama-3": {
+            "compat": {
+              "supportsDeveloperRole": false,
+              "thinkingFormat": "openai",
+              "thinkingTokenBudgetField": "thinking_budget_tokens"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+### Prefix matching
+
+Override keys are treated as **prefix filters** — a model ID matches if it starts with the key. When multiple patterns match, the **longest (most specific) match wins**. This lets you define broad patterns at the top of your overrides and override them with more specific ones below.
+
+Example:
+
+```json
+{
+  "llama": { "cost": { "input": 0.01, "output": 0.02 } },
+  "llama-3": { "reasoning": false },
+  "llama-3-8b": { "cost": { "input": 0.2, "output": 0.6 } }
+}
+```
+
+| Model ID      | Matching keys                    | Winner (longest) | Effective override                                     |
+| ------------- | -------------------------------- | ---------------- | ------------------------------------------------------ |
+| `llama-3-8b`  | `llama`, `llama-3`, `llama-3-8b` | `llama-3-8b`     | `{ cost: { input: 0.2, output: 0.6 } }`                |
+| `llama-3-70b` | `llama`, `llama-3`               | `llama-3`        | `{ reasoning: false }`                                 |
+| `mistral-7b`  | `llama` (no)                     | none             | defaults (zero cost, detected caps, `reasoning: true`) |
+
+> **Note:** Exact model IDs still work — they are simply the longest possible prefix for themselves. Empty keys are silently ignored.
+
+Model matching uses this prefix system — the model ID must start with the override key for a match.
+
+> **Note:** Overrides are resolved through the same settings merge logic (project overrides global), so they follow the same precedence chain as other server settings. If the same URL appears multiple times with different `overrides`, only the first one's overrides will be used (consistent with existing dedup behavior).
+
 ### Model Selection Event
 
 When you switch models via Pi's model picker (instead of using the `/models` command), the extension listens for the `model_select` event, which also loads the requested model before the conversation begins.
@@ -349,9 +463,11 @@ If loading takes longer than **60 seconds** (configurable via `pollingTimeout`),
 
 Each model exposed to Pi includes the following defaults:
 
-- **`maxTokens`** — dynamically set to the model's context window (detected from llama-server)
-- **`reasoning`** — `true` (assumed, as llama.cpp's `/v1/models` endpoint does not expose it)
-- **`cost`** — all zero (local models)
+- **`contextWindow`** — detected from llama-server (see how the extension determines the context size above); can be overridden per-model via `llamaSettings.servers[].overrides` (see [Model Overrides](#model-overrides))
+- **`maxTokens`** — dynamically set to the model's context window (detected from llama-server); can be overridden per-model via `llamaSettings.servers[].overrides` (see [Model Overrides](#model-overrides))
+- **`reasoning`** — `true` by default (llama.cpp's `/v1/models` endpoint does not expose it); can be overridden per-model via `llamaSettings.servers[].overrides` (see [Model Overrides](#model-overrides))
+- **`cost`** — all zero by default; can be customized per-model via `llamaSettings.servers[].overrides` (see [Model Overrides](#model-overrides))
+- **`compat`** — OpenAI-compatible provider compatibility settings; can be set per-model via `llamaSettings.servers[].overrides` (see [Model Overrides](#model-overrides))
 
 ## Dependencies
 

@@ -30,7 +30,7 @@ export class ServerManager {
    */
   async initialize(pi: ExtensionAPI) {
     // Register the providers with the configured server timeout
-    const { serverTimeout } = this.settings.resolveTimeouts();
+    const { serverTimeout } = await this.settings.resolveTimeouts();
     await this.update(pi, serverTimeout);
   }
 
@@ -51,7 +51,7 @@ export class ServerManager {
     // (add / remove / URL / id / name) apply on the next scan
     const fresh: Server[] = [];
     const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
-    for (const server of this.settings.resolveServers()) {
+    for (const server of await this.settings.resolveServers()) {
       if (seen.has(server.providerId)) continue;
       seen.add(server.providerId);
       fresh.push(server);
@@ -171,16 +171,20 @@ export class ServerManager {
 
   /**
    * Returns all models from all servers, sorted by the configured sort mode.
+   * Servers maintain their order from `llamaSettings`; sorting only applies
+   * to models within each server.
    *
    * @returns Flat array of all models across all servers
    */
-  getAllModels(): BaseModel[] {
-    const sortBy = this.settings.resolveSortBy();
-    const allModels = this.servers.flatMap((s) => s.models);
+  async getAllModels(): Promise<BaseModel[]> {
+    const sortBy = await this.settings.resolveSortBy();
 
-    if (sortBy === "api") return allModels;
+    if (sortBy === "api") {
+      return this.servers.flatMap((s) => s.models);
+    }
 
-    return allModels.sort(ServerManager.SORTERS[sortBy]);
+    const sorter = ServerManager.SORTERS[sortBy];
+    return this.servers.flatMap((s) => [...s.models].sort(sorter));
   }
 
   private static sortByIdAsc(a: BaseModel, b: BaseModel): number {
@@ -204,8 +208,7 @@ export class ServerManager {
   }
 
   /**
-   * Comparators for each sort mode except "api", which preserves server
-   * order (short-circuited in {@link ServerManager.getAllModels}).
+   * Comparators for sorting models within each server.
    */
   private static readonly SORTERS: Record<
     Exclude<SortBy, "api">,

@@ -1,3 +1,5 @@
+import type { ModelOverride } from "./settings";
+
 /**
  * Identity of a llama.cpp server endpoint.
  *
@@ -17,4 +19,9 @@ export interface ServerOptions {
    * Custom provider name suffix; falls back to the base URL.
    */
   customName?: string;
+  /**
+   * Per-model overrides resolved from `llamaSettings.servers`. See
+   * {@link ModelOverride} for the fallback semantics of each field.
+   */
+  overrides?: Record<string, ModelOverride>;
 }

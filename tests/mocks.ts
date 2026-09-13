@@ -12,7 +12,7 @@ import {
 } from "../src/constants";
 import { Mode } from "../src/enums/mode";
 import { Status } from "../src/enums/status";
-import type { LlamaServer } from "../src/interfaces/settings";
+import type { ModelOverride } from "../src/interfaces/settings";
 import type { LlamaSettingsManager } from "../src/managers/settings";
 import { BaseModel } from "../src/models/baseModel";
 import { Server } from "../src/server";
@@ -32,18 +32,19 @@ export const makeSettingsStub = (
   overrides: Partial<LlamaSettingsManager> = {},
 ): LlamaSettingsManager =>
   ({
-    resolveTimeouts: vi.fn(() => ({
+    getLlamaSettings: vi.fn(async () => ({})),
+    getLlamaServers: vi.fn(async () => []),
+    resolveTimeouts: vi.fn(async () => ({
       pollingTimeout: POLLING_TIMEOUT,
       serverTimeout: SERVER_TIMEOUT,
     })),
-    resolveServers: vi.fn((): Server[] => []),
-    resolveSortBy: vi.fn(() => SORT_BY),
+    resolveServers: vi.fn(async () => []),
+    resolveSortBy: vi.fn(async () => SORT_BY),
     resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
-    resolveReactToModelSelect: vi.fn(() => REACT_TO_MODEL_SELECT),
-    resolveAutoloadOnMessage: vi.fn(() => AUTOLOAD_ON_MESSAGE),
+    resolveReactToModelSelect: vi.fn(async () => REACT_TO_MODEL_SELECT),
+    resolveAutoloadOnMessage: vi.fn(async () => AUTOLOAD_ON_MESSAGE),
     resolveThinkingLevel: vi.fn(() => undefined),
     resolveThinkingBudgets: vi.fn(() => ({ ...THINKING_BUDGETS })),
-    llamaServers: [] as LlamaServer[],
     takeWarnings: vi.fn((): string[] => []),
     setLlamaSetting: vi.fn(() => Promise.resolve()),
     ...overrides,
@@ -102,6 +103,7 @@ export type MockServerOverrides = Partial<
   models?: BaseModel[];
   pollingTimeout?: number;
   serverTimeout?: number;
+  overrides?: Record<string, ModelOverride>;
 };
 
 /**
@@ -124,6 +126,7 @@ export const createMockServer = (
     models,
     pollingTimeout,
     serverTimeout,
+    overrides: modelOverrides,
     initialize,
     ...members
   } = overrides;
@@ -131,7 +134,7 @@ export const createMockServer = (
   const settings = makeSettingsStub({
     ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
     ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
-      resolveTimeouts: vi.fn(() => ({
+      resolveTimeouts: vi.fn(async () => ({
         pollingTimeout: pollingTimeout ?? POLLING_TIMEOUT,
         serverTimeout: serverTimeout ?? SERVER_TIMEOUT,
       })),
@@ -145,6 +148,7 @@ export const createMockServer = (
       baseUrl: baseUrl ?? "http://127.0.0.1:8080",
       customId,
       customName,
+      overrides: modelOverrides,
     },
     {
       createApiClient: () => apiClient,
@@ -184,12 +188,10 @@ export const createMockCtx = (
 ) => ({
   mode: "tui",
   cwd: "/tmp/test",
-  mode: "tui",
   ui: {
     select: vi.fn(selectFn),
-    custom: vi.fn(async <T,>(_factory: any) => null as T),
+    custom: vi.fn<ExtensionContext["ui"]["custom"]>(),
     notify: vi.fn(),
-    custom: vi.fn(),
     theme: {
       fg: (color: string, text: string) => text,
     },

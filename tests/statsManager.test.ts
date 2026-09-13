@@ -61,6 +61,32 @@ beforeEach(() => {
 });
 
 describe("StatsManager display lifecycle", () => {
+  it("finishes on DONE without a usage trailer or finish reason", async () => {
+    const { manager, messages, widgetSets } = createManager();
+    await feedSse(manager, [
+      data({ choices: [{ delta: { content: "Hi" } }] }),
+      "data: [DONE]\n",
+    ]);
+    expect(messages.at(-1)).toBe("Done! 1 tok");
+    expect(widgetSets.at(-1)?.content?.[0]).toContain("Generate  1 tok");
+  });
+
+  it("preserves an explicit disabled usage option", () => {
+    const { manager } = createManager();
+    const init = {
+      body: JSON.stringify({
+        stream: true,
+        stream_options: { include_usage: false },
+      }),
+    };
+    manager["requestProgress"](init);
+    expect(JSON.parse(init.body)).toEqual({
+      stream: true,
+      stream_options: { include_usage: false },
+      return_progress: true,
+    });
+  });
+
   it("tracks server URL changes after construction", () => {
     let urls = ["http://localhost:8080"];
     const manager = new StatsManager(() => urls);
