@@ -1,6 +1,7 @@
 import { ApiClient } from "./api/client";
 import {
   API_KEY_PLACEHOLDER,
+  ENDPOINT_PREFIX,
   PROVIDER_NAME,
   PROVIDER_PREFIX,
 } from "./constants";
@@ -20,6 +21,7 @@ import { LegacyModel } from "./models/legacyModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
+import { checkServerHealth } from "./utils/health";
 
 /**
  * Optional constructor collaborators for {@link Server} — the seam tests use
@@ -57,6 +59,19 @@ export class Server {
   /** Base URL of this server endpoint. */
   get baseUrl(): string {
     return this.options.baseUrl;
+  }
+
+  /**
+   * Base URL of the OpenAI-compatible API: {@link baseUrl} joined with
+   * {@link ENDPOINT_PREFIX}. Idempotent — a baseUrl that already ends with
+   * the prefix is returned untouched, so proxied setups exposing the API
+   * under a /v1 path don't double up.
+   */
+  get apiBaseUrl(): string {
+    const { baseUrl } = this.options;
+    return baseUrl.endsWith(ENDPOINT_PREFIX)
+      ? baseUrl
+      : `${baseUrl}${ENDPOINT_PREFIX}`;
   }
 
   /**
@@ -163,28 +178,16 @@ export class Server {
   /**
    * Checks if the server is ready, with a timeout.
    *
+   * Delegates to the shared health probe (`utils/health`) — bypasses the
+   * `ApiClient` on purpose: each caller probes once per scan, so the
+   * client's cache/dedup would be dead weight, and a plain `fetch` with
+   * `AbortSignal.timeout` actually cancels the request on timeout.
+   *
    * @param timeout Maximum time to wait for the health check
    * @returns The server status
    */
   async isReady(timeout: number): Promise<ServerStatus> {
-    try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), timeout),
-      );
-      const health = await Promise.race([
-        this.fetchServerHealth(),
-        timeoutPromise,
-      ]);
-      if (health.status === "ok") {
-        return ServerStatus.READY;
-      }
-      return ServerStatus.UNREACHABLE;
-    } catch (error) {
-      if (error instanceof Error && error.message === "timeout") {
-        return ServerStatus.TIMEOUT;
-      }
-      return ServerStatus.UNREACHABLE;
-    }
+    return checkServerHealth(this.baseUrl, timeout, this.getApiKey());
   }
 
   /**
@@ -202,7 +205,9 @@ export class Server {
    * @return The models from the server
    */
   async fetchModels(): Promise<ModelsEndpoint> {
-    return await this.apiClient.get<ModelsEndpoint>("/v1/models");
+    return await this.apiClient.get<ModelsEndpoint>(
+      `${ENDPOINT_PREFIX}/models`,
+    );
   }
 
   /**

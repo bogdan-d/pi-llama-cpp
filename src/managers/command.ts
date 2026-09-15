@@ -320,6 +320,7 @@ export class CommandManager {
     }
 
     const servers = await this.settings.getLlamaServers();
+    const { serverTimeout } = await this.settings.resolveTimeouts();
 
     await ctx.ui.custom<void>(
       (tui, theme, keybindings, done) =>
@@ -335,6 +336,7 @@ export class CommandManager {
             this.serverManager.update(pi);
           },
           onError: (message) => ctx.ui.notify(message, "error"),
+          serverTimeout,
         }),
     );
   }

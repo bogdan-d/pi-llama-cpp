@@ -11,7 +11,11 @@ import type {
 import { SettingsList, type SettingItem } from "@earendil-works/pi-tui";
 import type { LlamaServer } from "../interfaces/settings";
 import { ConfirmDialog, InputDialog } from "./dialog";
-import { formatServerSuffix, normalizeServerUrl } from "./serverListEditor";
+import {
+  formatServerSuffix,
+  getServerHealthEmoji,
+  normalizeServerUrl,
+} from "./serverListEditor";
 import { fieldMessage, FIELDS, HINTS, TITLES } from "./strings";
 
 /**
@@ -36,6 +40,8 @@ export interface ServerSettingsListOptions {
   done: () => void;
   /** Notifies about persistence errors */
   onError: (message: string) => void;
+  /** Timeout (ms) for health checks. Defaults to 1000ms if not provided. */
+  serverTimeout?: number;
 }
 
 /**
@@ -59,7 +65,6 @@ const buildServerFieldItems = (
       TITLES.edit(FIELDS.serverUrl.label),
       fieldMessage(FIELDS.serverUrl),
       FIELDS.serverUrl.placeholder,
-      server.url,
       normalizeServerUrl,
     ),
   },
@@ -74,7 +79,6 @@ const buildServerFieldItems = (
       TITLES.edit(FIELDS.providerId.label),
       fieldMessage(FIELDS.providerId),
       FIELDS.providerId.placeholder,
-      server.id ?? "",
     ),
   },
   {
@@ -88,7 +92,6 @@ const buildServerFieldItems = (
       TITLES.edit(FIELDS.displayName.label),
       fieldMessage(FIELDS.displayName),
       FIELDS.displayName.placeholder,
-      server.name ?? "",
     ),
   },
 ];
@@ -103,21 +106,27 @@ const buildServerRow = (
   theme: Theme,
   tui: TUI,
   onChange: (field: string, value: string) => void,
+  healthEmoji: string,
+  onSubmenuChange: (open: boolean) => void,
 ): SettingItem => ({
   id: `server-${index}`,
-  label: server.url,
+  label: `${healthEmoji} ${server.url}`,
   description: HINTS.serverRow,
   currentValue: formatServerSuffix(server),
   submenu: (_cv, done) => {
     // Rebuild the field items on open so they prefill with current values
     const items = buildServerFieldItems(server, theme, tui);
+    onSubmenuChange(true);
     return new SettingsList(
       items,
       Math.min(items.length + 2, 15),
       getSettingsListTheme(),
       // Field commits arrive here: done(value) from the input submenus
       (field, value) => onChange(field, value),
-      done,
+      () => {
+        onSubmenuChange(false);
+        done();
+      },
     );
   },
 });
@@ -135,7 +144,7 @@ const buildServerRow = (
  * - **Esc** closes the editor.
  */
 export class ServerSettingsList implements Component, Focusable {
-  private settingsList: SettingsList;
+  private settingsList!: SettingsList;
   private mode: "list" | "wizard" | "confirm" = "list";
   private wizardStep = 0;
   private wizardUrl = "";
@@ -143,9 +152,14 @@ export class ServerSettingsList implements Component, Focusable {
   private wizardDialog: InputDialog | undefined;
   private confirmDialog: ConfirmDialog | undefined;
   private isFocused = false;
+  /** True while a server row's field-edit submenu is open */
+  private submenuOpen = false;
 
   constructor(private readonly options: ServerSettingsListOptions) {
-    this.settingsList = this.buildSettingsList();
+    this.buildSettingsList().then((list) => {
+      this.settingsList = list;
+      this.options.tui.requestRender();
+    });
   }
 
   /**
@@ -154,11 +168,30 @@ export class ServerSettingsList implements Component, Focusable {
    * successful persist so added/deleted/edited servers are reflected
    * immediately (the initial snapshot is not mutated by `persist`).
    */
-  private buildSettingsList(): SettingsList {
+  private async buildSettingsList(): Promise<SettingsList> {
     const { theme, tui } = this.options;
+    const serverTimeout = this.options.serverTimeout ?? 1000;
+    // Check health for each server in parallel
+    const healthEmojis = await Promise.all(
+      this.options.servers.map((server) =>
+        getServerHealthEmoji(server.url, serverTimeout),
+      ),
+    );
+
+    // A fresh list never has a submenu open (also covers the rebuild
+    // paths, which discard any open field submenu)
+    this.submenuOpen = false;
     const items: SettingItem[] = this.options.servers.map((server, i) =>
-      buildServerRow(server, i, theme, tui, (field, value) =>
-        this.handleFieldChange(field, value),
+      buildServerRow(
+        server,
+        i,
+        theme,
+        tui,
+        (field, value) => this.handleFieldChange(field, value),
+        healthEmojis[i],
+        (open) => {
+          this.submenuOpen = open;
+        },
       ),
     );
 
@@ -190,7 +223,7 @@ export class ServerSettingsList implements Component, Focusable {
   // -- Component -----------------------------------------------------------
 
   invalidate(): void {
-    this.settingsList.invalidate();
+    this.settingsList?.invalidate();
     this.wizardDialog?.invalidate();
     this.confirmDialog?.invalidate();
   }
@@ -203,6 +236,15 @@ export class ServerSettingsList implements Component, Focusable {
 
     if (this.mode === "confirm") {
       this.confirmDialog?.handleInput(data);
+      return;
+    }
+
+    // A server row's field submenu is open: delegate everything (Esc,
+    // a/d, arrows) to the containing SettingsList, which forwards input
+    // to the submenu. Intercepting here would close the whole editor on
+    // Esc and trigger add/delete while typing in a field.
+    if (this.submenuOpen) {
+      this.settingsList?.handleInput(data);
       return;
     }
 
@@ -233,7 +275,7 @@ export class ServerSettingsList implements Component, Focusable {
       return;
     }
     // Delegate to SettingsList (it handles up/down internally for rendering)
-    this.settingsList.handleInput(data);
+    this.settingsList?.handleInput(data);
   }
 
   render(width: number): string[] {
@@ -244,6 +286,10 @@ export class ServerSettingsList implements Component, Focusable {
     if (this.mode === "confirm") {
       return this.confirmDialog?.render(width) ?? [];
     }
+
+    // settingsList may not be initialized yet if buildSettingsList is still
+    // resolving health checks (async in constructor). Return empty until ready.
+    if (!this.settingsList) return [];
 
     // List mode: the shortcuts live in the rows' description; only when the
     // list is empty (no rows → no description) show them as the hint line
@@ -272,8 +318,9 @@ export class ServerSettingsList implements Component, Focusable {
    * (clamped to the last row). A fresh SettingsList starts its cursor
    * at index 0, so `selectItem` is used to restore the position.
    */
-  private rebuildList(targetIndex: number): void {
-    this.settingsList = this.buildSettingsList();
+  private async rebuildList(targetIndex: number): Promise<void> {
+    const list = await this.buildSettingsList();
+    this.settingsList = list;
     const count = this.options.servers.length;
     if (count === 0) {
       this._selectedIndex = 0;
@@ -381,7 +428,7 @@ export class ServerSettingsList implements Component, Focusable {
       // Adopt the persisted list and rebuild so the new row appears;
       // the new server is appended last — put the cursor on it
       this.options.servers = next;
-      this.rebuildList(next.length - 1);
+      await this.rebuildList(next.length - 1);
       this.mode = "list";
     } catch (err) {
       this.options.onError(String(err));
@@ -426,7 +473,7 @@ export class ServerSettingsList implements Component, Focusable {
       // the server that followed the deleted one now sits at the same
       // index (rebuildList clamps when the last row was deleted)
       this.options.servers = next;
-      this.rebuildList(idx);
+      await this.rebuildList(idx);
       this.mode = "list";
     } catch (err) {
       this.options.onError(String(err));
@@ -456,7 +503,7 @@ export class ServerSettingsList implements Component, Focusable {
       // URL/id/name changes alter row labels → rebuild the list;
       // keep the cursor on the edited server
       this.options.servers = next;
-      this.rebuildList(idx);
+      await this.rebuildList(idx);
       this.options.tui.requestRender();
     } catch (err) {
       this.options.onError(String(err));

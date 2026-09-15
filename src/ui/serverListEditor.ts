@@ -1,5 +1,7 @@
 import { PROVIDER_PREFIX } from "../constants";
+import { ServerStatus } from "../enums/serverStatus";
 import type { LlamaServer } from "../interfaces/settings";
+import { checkServerHealth } from "../utils/health";
 import { normalizeUrl } from "../utils/urls";
 
 /**
@@ -30,3 +32,28 @@ export const formatServerSuffix = (server: LlamaServer): string => {
   const id = server.id ?? `${PROVIDER_PREFIX}=${server.url}`;
   return server.name ? `(${id} - ${server.name})` : `(${server.id})`;
 };
+
+/**
+ * Emoji indicators for server health status.
+ */
+const SERVER_STATUS_ICONS: Record<ServerStatus, string> = {
+  [ServerStatus.READY]: "🟢",
+  [ServerStatus.TIMEOUT]: "🟡",
+  [ServerStatus.UNREACHABLE]: "🔴",
+};
+
+/**
+ * Checks the health of a server and returns the corresponding emoji.
+ *
+ * Delegates the probe/classification to the shared `checkServerHealth`
+ * (`utils/health`) — this wrapper only maps the status to its icon.
+ *
+ * @param url - The server URL to check
+ * @param timeout - Maximum time (ms) to wait for the health check
+ * @returns The health emoji for the server status
+ */
+export const getServerHealthEmoji = async (
+  url: string,
+  timeout: number,
+): Promise<string> =>
+  SERVER_STATUS_ICONS[await checkServerHealth(url, timeout)];
