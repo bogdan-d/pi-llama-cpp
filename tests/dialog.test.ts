@@ -5,9 +5,10 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ConfirmDialog, InputDialog } from "../src/ui/dialog";
-import { createOverrideSettingsList } from "../src/ui/overrideSettingsList";
-import { ServerSettingsList } from "../src/ui/serverSettingsList";
+import { ConfirmDialog } from "../src/ui/dialog/confirm";
+import { InputDialog } from "../src/ui/dialog/input";
+import { OverrideSettingsList } from "../src/ui/editors/override/overrideList";
+import { ServerSettingsList } from "../src/ui/editors/server/serverEditor";
 
 beforeEach(() => {
   initTheme();
@@ -191,7 +192,7 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
 
   it("re-entering a cost field prefills the just-saved value", async () => {
     const persist = vi.fn().mockResolvedValue(undefined);
-    const list = createOverrideSettingsList({
+    const list = new OverrideSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
       keybindings: createKeybindings(),
@@ -224,5 +225,55 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
     const rendered = list.render(80).join("\n");
     expect(rendered).toContain("0.5");
     expect(rendered).not.toContain("0.2");
+  });
+});
+
+describe("OverrideSettingsList escape navigation", () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  const build = () => {
+    const done = vi.fn();
+    const list = new OverrideSettingsList({
+      tui: createMockTui(),
+      theme: createMockTheme(),
+      keybindings: createKeybindings(),
+      servers: [
+        {
+          url: "http://x:1",
+          overrides: { "gpt-*": { cost: { input: 0.2 } } },
+        },
+      ] as never[],
+      persist: vi.fn().mockResolvedValue(undefined),
+      done,
+      onError: vi.fn(),
+      onChanged: vi.fn(),
+    });
+    return { list, done };
+  };
+
+  it("Esc from the field submenu then the entry list lands on the server list", async () => {
+    const { list, done } = build();
+
+    list.handleInput(ENTER); // drill into the server row (entry list)
+    list.handleInput(ENTER); // open the field submenu
+    expect(list.render(80).join("\n")).not.toContain("http://x:1");
+
+    list.handleInput(ESC); // field submenu → entry list
+    await flush();
+    expect(done).not.toHaveBeenCalled();
+    expect(list.render(80).join("\n")).not.toContain("http://x:1");
+
+    list.handleInput(ESC); // entry list → server list
+    await flush();
+    // The dialog must stay open, showing the server row again
+    expect(done).not.toHaveBeenCalled();
+    expect(list.render(80).join("\n")).toContain("http://x:1");
+  });
+
+  it("Esc from the server list closes the dialog", async () => {
+    const { list, done } = build();
+
+    list.handleInput(ESC);
+    expect(done).toHaveBeenCalledTimes(1);
   });
 });

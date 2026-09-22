@@ -3,16 +3,16 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "../src/enums/action";
+import { CommandManager } from "../src/managers/command";
+import { ServerManager } from "../src/managers/server";
+import type { LlamaSettingsManager } from "../src/managers/settings";
+import { ServerSettingsList } from "../src/ui/editors/server/serverEditor";
+import { ServerDisplay } from "../src/ui/editors/server/utils";
 import {
   applySettingChange,
   buildSettingsItems,
-  CommandManager,
   formatMs,
-} from "../src/managers/command";
-import { ServerManager } from "../src/managers/server";
-import type { LlamaSettingsManager } from "../src/managers/settings";
-import * as serverListEditor from "../src/ui/serverListEditor";
-import { ServerSettingsList } from "../src/ui/serverSettingsList";
+} from "../src/ui/settings";
 import {
   createMockCtx,
   createMockModel,
@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRpc.mockResolvedValue({ data: [] });
   // Mock health checks to return "healthy" immediately
-  vi.spyOn(serverListEditor, "getServerHealthEmoji").mockResolvedValue("🟢");
+  vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
 });
 
 /**
@@ -254,7 +254,7 @@ describe("CommandManager", () => {
         bold: (text: string) => text,
       }) as unknown as Theme;
 
-    it("should open the editor without touching servers", async () => {
+    it("should re-register providers after the editor closes", async () => {
       const updateSpy = vi
         .spyOn(serverManager, "update")
         .mockResolvedValue(undefined);
@@ -262,8 +262,13 @@ describe("CommandManager", () => {
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
 
-      expect(updateSpy).not.toHaveBeenCalled();
       expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      // Re-registration happens on close, not on open. The mock dialog
+      // resolves immediately, so the update call must come after custom.
+      expect(updateSpy.mock.invocationCallOrder[0]).toBeGreaterThan(
+        vi.mocked(ctx.ui.custom).mock.invocationCallOrder[0],
+      );
     });
 
     it("should notify instead of opening the editor outside the TUI", async () => {

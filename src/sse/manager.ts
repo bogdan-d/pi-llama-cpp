@@ -1,5 +1,6 @@
 import type { Server } from "../server";
-import { SSEClient, buildSSEUrl } from "./client";
+import { SSEClient } from "./client";
+import { buildAuthHeaders } from "./fetch";
 import {
   DownloadProgressData,
   ProgressData,
@@ -14,7 +15,7 @@ import {
  * Manages SSE connections and event routing for a single llama-server instance.
  *
  * Handles:
- * - Shared EventSource connection
+ * - Shared SSE connection
  * - Model-based event subscription with callback aggregation
  * - Progress parsing and callback dispatch
  */
@@ -24,26 +25,7 @@ export class SSEManager {
   private modelCallbacks: Map<string, SSECallback[]> = new Map();
   private sseSupported: boolean | null = null;
 
-  constructor(
-    private readonly server: Server,
-    private readonly apiKey: string,
-  ) {}
-
-  /**
-   * Maximum time (ms) for server verification and SSE support probe.
-   * Delegates to the owning {@link Server}.
-   */
-  async getServerTimeout(): Promise<number> {
-    return this.server.getServerTimeout();
-  }
-
-  /**
-   * Maximum time (ms) to wait for model loading before giving up.
-   * Delegates to the owning {@link Server}.
-   */
-  async getPollingTimeout(): Promise<number> {
-    return this.server.getPollingTimeout();
-  }
+  constructor(private readonly server: Server) {}
 
   /**
    * The SSE endpoint URL.
@@ -62,10 +44,10 @@ export class SSEManager {
     if (this.sseSupported !== null) return this.sseSupported;
 
     try {
-      const url = buildSSEUrl(this.sseEndpoint, this.apiKey);
-      const response = await fetch(url, {
+      const response = await fetch(this.sseEndpoint, {
         method: "GET",
-        signal: AbortSignal.timeout(await this.getServerTimeout()),
+        headers: buildAuthHeaders(this.server.getApiKey()),
+        signal: AbortSignal.timeout(await this.server.getServerTimeout()),
       });
       this.sseSupported =
         response.ok &&
@@ -96,7 +78,7 @@ export class SSEManager {
     this.modelCallbacks.set(modelId, callbacks);
 
     // Create SSE client if not already created
-    this.sseClient ??= new SSEClient(this.sseEndpoint, this.apiKey);
+    this.sseClient ??= new SSEClient(this.sseEndpoint, this.server.getApiKey());
 
     // Subscribe a single dispatching callback to the SSE client
     if (!this.sseSubscribers.has(modelId)) {
@@ -181,7 +163,7 @@ export class SSEManager {
    */
   async subscribeToStatus(modelId: string): Promise<StatusChangeData> {
     return new Promise(async (resolve, reject) => {
-      const pollingTimeout = await this.getPollingTimeout();
+      const pollingTimeout = await this.server.getPollingTimeout();
       const timeout = setTimeout(
         () => reject(new Error(`SSE status timeout for model: ${modelId}`)),
         pollingTimeout,

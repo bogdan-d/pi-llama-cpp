@@ -3,11 +3,9 @@ import {
   API_KEY_PLACEHOLDER,
   ENDPOINT_PREFIX,
   PROVIDER_NAME,
-  PROVIDER_PREFIX,
 } from "./constants";
 import { Mode } from "./enums/mode";
 import { ServerStatus } from "./enums/serverStatus";
-import { HealthEndpoint } from "./interfaces/endpoints/health";
 import { ModelsEndpoint } from "./interfaces/endpoints/models";
 import {
   PropsEndpoint,
@@ -22,20 +20,22 @@ import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
 import { checkServerHealth } from "./utils/health";
+import { ServerIds } from "./utils/serverIds";
 
 /**
  * Optional constructor collaborators for {@link Server} — the seam tests use
  * to run the real Server against fake clients.
  *
  * Both are factories because their arguments only exist around construction:
- * the API key is (re-)resolved by the Server, and SSEManager needs its owner.
- * Factories must stay pure functions of their arguments — `initialize()`
- * re-invokes both on every scan (the ApiClient rebuild picks up a fresh key,
- * by design), so captured per-server state would leak across re-scans.
+ * the API key is (re-)resolved by the Server, and SSEManager needs its owner
+ * (it reads the key and timeouts live through it). Factories must stay pure
+ * functions of their arguments — `initialize()` re-invokes both on every scan
+ * (the ApiClient rebuild picks up a fresh key, by design), so captured
+ * per-server state would leak across re-scans.
  */
 export type ServerDeps = {
   createApiClient?: (apiKey: string) => ApiClient;
-  createSSEManager?: (server: Server, apiKey: string) => SSEManager;
+  createSSEManager?: (server: Server) => SSEManager;
 };
 
 export class Server {
@@ -102,7 +102,7 @@ export class Server {
    * Uses custom ID if provided, otherwise falls back to URL-based ID.
    */
   get providerId(): string {
-    return this.options.customId ?? `${PROVIDER_PREFIX}=${this.baseUrl}`;
+    return ServerIds.resolve(this.baseUrl, this.options.customId);
   }
 
   /**
@@ -129,7 +129,7 @@ export class Server {
       if (key !== API_KEY_PLACEHOLDER) return key;
     }
     // Fall back to URL-based ID
-    return this.settings.resolveApiKey(`${PROVIDER_PREFIX}=${this.baseUrl}`);
+    return this.settings.resolveApiKey(ServerIds.fromUrl(this.baseUrl));
   }
 
   /**
@@ -141,9 +141,7 @@ export class Server {
     this.apiClient =
       this.deps.createApiClient?.(apiKey) ??
       new ApiClient(this.baseUrl, apiKey);
-    this.sse =
-      this.deps.createSSEManager?.(this, apiKey) ??
-      new SSEManager(this, apiKey);
+    this.sse = this.deps.createSSEManager?.(this) ?? new SSEManager(this);
     const { data } = await this.fetchModels();
     const mode = await this.detectServerMode(data);
 
@@ -191,15 +189,6 @@ export class Server {
   }
 
   /**
-   * Retrieves the health status of the server
-   *
-   * @returns The health status
-   */
-  async fetchServerHealth(): Promise<HealthEndpoint> {
-    return await this.apiClient.get<HealthEndpoint>("/health");
-  }
-
-  /**
    * Fetches models from the server
    *
    * @return The models from the server
@@ -232,13 +221,6 @@ export class Server {
   }
 
   /**
-   * Returns the per-model override configuration for this server.
-   */
-  getOverrides(): Record<string, ModelOverride> {
-    return this.options.overrides ?? {};
-  }
-
-  /**
    * Resolves the override for a given model ID using prefix matching.
    *
    * Keys in the overrides map are treated as prefix filters — a model ID
@@ -249,7 +231,7 @@ export class Server {
    * @returns The matching override, or `undefined` if no key matches.
    */
   findOverrideForModel(modelId: string): ModelOverride | undefined {
-    const overrides = this.getOverrides();
+    const overrides = this.options.overrides ?? {};
     let best: ModelOverride | undefined;
     let bestLen = 0;
 
