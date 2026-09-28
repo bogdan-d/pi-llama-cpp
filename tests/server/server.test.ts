@@ -214,7 +214,7 @@ describe("Server isReady", () => {
   });
 
   it("should return READY when health status is ok", async () => {
-    stubFetch(async () => ({ json: async () => ({ status: "ok" }) }));
+    stubFetch(async () => ({ ok: true, json: async () => ({ status: "ok" }) }));
 
     const server = createMockServer();
     const status = await server.isReady(1000);

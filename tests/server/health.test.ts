@@ -10,7 +10,7 @@ const stubFetch = (
   impl: (url: string, init?: RequestInit) => Promise<unknown>,
 ) => vi.stubGlobal("fetch", vi.fn(impl));
 
-const okResponse = () => ({ json: async () => ({ status: "ok" }) });
+const okResponse = () => ({ ok: true, json: async () => ({ status: "ok" }) });
 
 const URL_ = "http://127.0.0.1:8080";
 
@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe("checkServerHealth", () => {
   it("should return READY when the payload status is ok", async () => {
-    stubFetch(async () => ({ json: async () => ({ status: "ok" }) }));
+    stubFetch(async () => ({ ok: true, json: async () => ({ status: "ok" }) }));
 
     expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.READY);
   });
