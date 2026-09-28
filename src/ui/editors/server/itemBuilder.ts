@@ -10,7 +10,7 @@ import { ServerDisplay } from "./utils";
  * Builds `SettingItem` objects for server rows and their field-edit submenus.
  */
 export class ServerItemBuilder extends ItemBuilder<LlamaServer, ServerField> {
-  protected get fields(): readonly ServerField[] {
+  protected override get fields(): readonly ServerField[] {
     return ServerFields.all;
   }
 
@@ -18,7 +18,10 @@ export class ServerItemBuilder extends ItemBuilder<LlamaServer, ServerField> {
    * Adds the field-edit submenu: an `InputDialog` validating against the
    * field definition.
    */
-  protected decorate(def: ServerField, base: SettingItem): SettingItem {
+  protected override decorate(
+    def: ServerField,
+    base: SettingItem,
+  ): SettingItem {
     return {
       ...base,
       submenu: this.dialogs.inputSubmenu(

@@ -31,13 +31,13 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
 
   /** Esc steps back to the server list, not out of the whole dialog —
    * `options.done` is the top-level close (shared options object). */
-  protected close(): void {
+  protected override close(): void {
     this.done();
   }
 
   // -- abstract hooks -------------------------------------------------------
 
-  protected buildSettingsList(): SettingsList {
+  protected override buildSettingsList(): SettingsList {
     const builder = new OverrideItemBuilder(this.dialogs);
     const items: SettingItem[] = this.entries().map((entry, i) => ({
       id: `entry-${i}`,
@@ -103,7 +103,7 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
     );
   }
 
-  protected beginAdd(): void {
+  protected override beginAdd(): void {
     this.openDialog(
       this.dialogs.input({
         title: TITLES.addOverride,
@@ -119,7 +119,7 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
     );
   }
 
-  protected deleteSelected(): void {
+  protected override deleteSelected(): void {
     const idx = this.selectedIndex;
     const next = this.removeEntry(idx);
     void this.persistSnapshot(next, () => {
@@ -129,21 +129,21 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
     });
   }
 
-  protected readonly emptyHintKey = "emptyOverrideEntries" as const;
+  protected override readonly emptyHintKey = "emptyOverrideEntries" as const;
 
-  protected getCount(): number {
+  protected override getCount(): number {
     return this.entries().length;
   }
 
-  protected getRowId(index: number): string {
+  protected override getRowId(index: number): string {
     return `entry-${index}`;
   }
 
-  protected getRowLabel(index: number): string {
+  protected override getRowLabel(index: number): string {
     return this.entries()[index]?.pattern ?? "";
   }
 
-  protected get deleteTitle(): string {
+  protected override get deleteTitle(): string {
     return TITLES.deleteOverride;
   }
 

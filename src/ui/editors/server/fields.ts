@@ -26,7 +26,7 @@ class UrlField extends ServerField {
   readonly field = FIELDS.serverUrl;
   readonly validate = ServerUrl.parse;
 
-  currentValue(server: LlamaServer): string {
+  override currentValue(server: LlamaServer): string {
     return server.url;
   }
 
@@ -51,7 +51,7 @@ class OptionalTextField extends ServerField {
     this.field = field;
   }
 
-  currentValue(server: LlamaServer): string {
+  override currentValue(server: LlamaServer): string {
     return server[this.id] ?? "";
   }
 
