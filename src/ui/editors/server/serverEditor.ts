@@ -3,11 +3,12 @@ import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
 import { SERVER_TIMEOUT } from "../../../constants";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { LlamaSettingsManager } from "../../../managers/settings";
-import { TITLES } from "../../strings";
+import { ServerIds } from "../../../utils/serverIds";
+import { TITLES, authRequiredMessage } from "../../strings";
 import type { ServerSettingsListOptions } from "../editorOptions";
 import { ListEditor } from "../listEditor";
 import { SettingsListFactory } from "../settingsListFactory";
-import { ServerEntryMutator } from "./handlers";
+import { ServerFields } from "./fields";
 import { ServerItemBuilder } from "./itemBuilder";
 import { ServerDisplay } from "./utils";
 import { ServerWizard } from "./wizard";
@@ -58,6 +59,15 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
           done: () => done(undefined),
           onError: (message) => ui.notify(message, "error"),
           serverTimeout,
+          authResolver: async (server) => {
+            // Mirror Server.getApiKey(): use ServerIds.resolve to get
+            // the provider ID (customId or llama-server=<url>), then
+            // resolve the key from the credential store.
+            return settings.resolveApiKey(
+              ServerIds.resolve(server.url, server.id),
+            );
+          },
+          ui,
         }),
     );
   }
@@ -67,17 +77,24 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
   protected async buildSettingsList(): Promise<SettingsList> {
     const builder = new ServerItemBuilder(this.dialogs);
     const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
-    const healthEmojis = await Promise.all(
-      this.options.servers.map((server) =>
-        ServerDisplay.healthEmoji(server.url, serverTimeout),
-      ),
+    // Run auth + health probes in parallel; ⛔ wins if auth fails,
+    // otherwise fall back to the health emoji.
+    const probes = await Promise.all(
+      this.options.servers.map(async (server) => {
+        const apiKey = (await this.options.authResolver?.(server)) ?? "";
+        const [authEmoji, healthEmoji] = await Promise.all([
+          ServerDisplay.authEmoji(server.url, apiKey, serverTimeout),
+          ServerDisplay.healthEmoji(server.url, serverTimeout),
+        ]);
+        return authEmoji || healthEmoji;
+      }),
     );
     const items: SettingItem[] = this.options.servers.map((server, i) =>
       builder.buildRow(
         server,
         i,
         (field, value) => this.handleFieldChange(field, value),
-        healthEmojis[i],
+        probes[i],
         // Opening delegates input to the submenu; closing flushes a
         // rebuild deferred by a field commit (see commitFieldChange)
         (open) => this.trackSubmenu(open),
@@ -92,10 +109,13 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
   /** Handle a field commit from a server row's submenu. */
   private handleFieldChange(field: string, value: string): void {
     const idx = this.selectedIndex;
-    const next = new ServerEntryMutator(
-      this.options.servers,
-      idx,
-    ).applyFieldChange(field, value);
+    const server = this.options.servers[idx];
+    const updated = server
+      ? ServerFields.byId(field).apply(server, value)
+      : server;
+    const next = server
+      ? this.options.servers.map((s, i) => (i === idx ? updated : s))
+      : this.options.servers;
 
     this.commitFieldChange(next, idx, () => {
       // Refresh the row's suffix in place; the full rebuild (row labels
@@ -134,10 +154,6 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
 
   protected readonly emptyHintKey = "emptyServers" as const;
 
-  protected getCurrentCount(): number {
-    return this.options.servers.length;
-  }
-
   protected getRowId(index: number): string {
     return `server-${index}`;
   }
@@ -157,5 +173,25 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     await this.persistSnapshot(next, () => {
       void this.rebuildList(next.length - 1);
     });
+
+    // Warn the user if the newly added server requires an API key
+    await this.warnIfAuthRequired(server);
+  }
+
+  /**
+   * Probes the server to check if it requires an API key. If so, notifies
+   * the user so they know to configure one via `/login` or `auth.json`.
+   */
+  private async warnIfAuthRequired(server: LlamaServer): Promise<void> {
+    const ui = this.options.ui;
+    if (!ui) return;
+
+    const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
+    const apiKey = (await this.options.authResolver?.(server)) ?? "";
+
+    if (await ServerDisplay.requiresApiKey(server.url, apiKey, serverTimeout)) {
+      const providerId = ServerIds.resolve(server.url, server.id);
+      ui.notify(authRequiredMessage(server.url, providerId), "warning");
+    }
   }
 }

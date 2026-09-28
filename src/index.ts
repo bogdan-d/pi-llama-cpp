@@ -11,10 +11,11 @@ import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
 import { ServerManager } from "./managers/server";
-import { settings } from "./managers/settings";
+import { createSettingsManager } from "./managers/settings";
 import { StatsManager } from "./managers/stats";
 
 export default async function (pi: ExtensionAPI) {
+  const settings = createSettingsManager();
   const serverManager = new ServerManager(settings);
   const eventManager = new EventManager(serverManager, settings);
   const commandManager = new CommandManager(serverManager, settings);

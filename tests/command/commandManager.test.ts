@@ -2,17 +2,17 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Action } from "../src/enums/action";
-import { CommandManager } from "../src/managers/command";
-import { ServerManager } from "../src/managers/server";
-import type { LlamaSettingsManager } from "../src/managers/settings";
-import { ServerSettingsList } from "../src/ui/editors/server/serverEditor";
-import { ServerDisplay } from "../src/ui/editors/server/utils";
+import { Action } from "../../src/enums/action";
+import { CommandManager } from "../../src/managers/command";
+import { ServerManager } from "../../src/managers/server";
+import type { LlamaSettingsManager } from "../../src/managers/settings";
+import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
+import { ServerDisplay } from "../../src/ui/editors/server/utils";
 import {
   applySettingChange,
   buildSettingsItems,
   formatMs,
-} from "../src/ui/settings";
+} from "../../src/ui/settings";
 import {
   createMockCtx,
   createMockModel,
@@ -20,14 +20,15 @@ import {
   createMockServer,
   makeSettingsStub,
   mockRpc,
-} from "./mocks";
+} from "../mocks";
 
 beforeEach(() => {
   initTheme();
   vi.clearAllMocks();
   mockRpc.mockResolvedValue({ data: [] });
-  // Mock health checks to return "healthy" immediately
+  // Mock health checks and auth probes to return immediately
   vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
+  vi.spyOn(ServerDisplay, "authEmoji").mockResolvedValue("");
 });
 
 /**
@@ -163,6 +164,7 @@ describe("CommandManager", () => {
         "sortBy",
         "pollingTimeout",
         "serverTimeout",
+        "showServerUrls",
       ]);
       // Booleans are displayed as on/off
       expect(items[0].values).toEqual(["on", "off"]);
@@ -202,6 +204,18 @@ describe("CommandManager", () => {
       expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
         "serverTimeout",
         500,
+      );
+
+      await applySettingChange("showServerUrls", "on", settingsStub);
+      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
+        "showServerUrls",
+        true,
+      );
+
+      await applySettingChange("showServerUrls", "off", settingsStub);
+      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
+        "showServerUrls",
+        false,
       );
     });
   });
@@ -426,8 +440,6 @@ describe("CommandManager", () => {
   });
 
   describe("/models interactive menu", () => {
-    const CHOICE = "model-a   [Server: http://127.0.0.1:8080]";
-
     /**
      * Helper to create a CommandManager with mock servers and models.
      */
@@ -569,6 +581,63 @@ describe("CommandManager", () => {
 
       expect(menus[1]).toContain("model-a");
       expect(menus[1]).toContain("model-b");
+    });
+
+    it("should omit server URLs when showServerUrls is false", async () => {
+      const models = [createMockModel("model-a")];
+      const mockPi = createMockPi();
+      const servers = models.map((model) =>
+        createMockServer({
+          baseUrl: model.serverUrl,
+          models: [model],
+        }),
+      );
+      const settingsStub = makeSettingsStub({
+        resolveServers: vi.fn(async () => servers),
+        resolveShowServerUrls: vi.fn(async () => false),
+      });
+      const serverManager = new ServerManager(settingsStub);
+      const commandManager = new CommandManager(serverManager, settingsStub);
+
+      const ctx = createMockCtx(() => null);
+      let menu = "";
+      vi.mocked(ctx.ui.custom).mockImplementation(async (factory: any) => {
+        menu = factory({}, ctx.ui.theme, {}, () => {}).render(120).join("\n");
+        return null;
+      });
+
+      await commandManager.handleCommand("", ctx as any, mockPi as any);
+
+      expect(menu).toContain("model-a");
+      expect(menu).not.toContain("[Server:");
+    });
+
+    it("should include server URLs when showServerUrls is true", async () => {
+      const models = [createMockModel("model-a")];
+      const mockPi = createMockPi();
+      const servers = models.map((model) =>
+        createMockServer({
+          baseUrl: model.serverUrl,
+          models: [model],
+        }),
+      );
+      const settingsStub = makeSettingsStub({
+        resolveServers: vi.fn(async () => servers),
+        resolveShowServerUrls: vi.fn(async () => true),
+      });
+      const serverManager = new ServerManager(settingsStub);
+      const commandManager = new CommandManager(serverManager, settingsStub);
+
+      const ctx = createMockCtx(() => null);
+      let menu = "";
+      vi.mocked(ctx.ui.custom).mockImplementation(async (factory: any) => {
+        menu = factory({}, ctx.ui.theme, {}, () => {}).render(120).join("\n");
+        return null;
+      });
+
+      await commandManager.handleCommand("", ctx as any, mockPi as any);
+
+      expect(menu).toContain("[Server: http://127.0.0.1:8080]");
     });
   });
 });

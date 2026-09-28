@@ -1,10 +1,14 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ProviderModelConfig,
+} from "@earendil-works/pi-coding-agent";
 import { ApiError } from "../api/client";
 import { API_TYPE, PROVIDER_NAME } from "../constants";
 import { ServerStatus } from "../enums/serverStatus";
 import type { SortBy } from "../interfaces/sortBy";
 import { BaseModel } from "../models/baseModel";
 import { Server } from "../server";
+import { authRequiredMessage } from "../ui/strings";
 import type { LlamaSettingsManager } from "./settings";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
@@ -45,6 +49,7 @@ export class ServerManager {
    */
   async update(pi: ExtensionAPI, timeout?: number) {
     this.failedUrls.length = 0;
+    this.warnings.length = 0;
 
     // Surface warnings from strict URL parsing (dropped invalid entries)
     this.warnings.push(...this.settings.takeWarnings());
@@ -60,9 +65,9 @@ export class ServerManager {
     }
 
     // Unregister providers that disappeared (removed or edited away);
-    // no-op for providers that were never registered
+    // `seen` tracks all kept providerIds, so we skip those still present.
     for (const old of this.servers) {
-      if (fresh.some((f) => f.providerId === old.providerId)) continue;
+      if (seen.has(old.providerId)) continue;
       pi.unregisterProvider(old.providerId);
       // Optional chain is intentional despite the non-optional type: `sse`
       // is undefined until initialize() runs (async-constructor hack — see Server)
@@ -79,34 +84,7 @@ export class ServerManager {
 
     // Initialization and registration
     for (const server of registrableServers) {
-      try {
-        await server.initialize();
-        await this.registerProvider(server, pi);
-      } catch (err) {
-        if (err instanceof ApiError && err.type === "authentication") {
-          // Register the provider with an empty model list so the user can
-          // still configure the API key via `/login` or `auth.json`. On the
-          // next scan the provider will re-initialize and discover models.
-          // Don't add to `failedUrls` — the server IS reachable, auth just
-          // isn't configured yet, so the health indicator should stay green.
-          const message = [
-            "[pi-llama-cpp]",
-            `Server at '${server.baseUrl}' requires a valid API key.`,
-            "Configure the key via `/login` or in `~/.pi/agent/auth.json`.",
-          ].join("\n");
-          this.warnings.push(message);
-          pi.registerProvider(server.providerId, {
-            name: server.providerName,
-            baseUrl: server.apiBaseUrl,
-            api: API_TYPE,
-            apiKey: server.getApiKey(),
-            models: [],
-          });
-          continue;
-        }
-        this.failedUrls.push(server.baseUrl);
-        continue;
-      }
+      await this.registerProvider(server, pi);
     }
   }
 
@@ -151,23 +129,37 @@ export class ServerManager {
   }
 
   /**
-   * Creates a Pi provider for the given server.
+   * Initializes the server and creates a Pi provider.
+   * Handles auth errors by registering with an empty model list so the user
+   * can still configure the API key via `/login` or `auth.json`.
    *
    * @param server The server
    * @param pi The Pi API
    */
   private async registerProvider(server: Server, pi: ExtensionAPI) {
-    const { apiBaseUrl, models, providerId, providerName } = server;
-    const apiKey = server.getApiKey();
-    const modelConfigs = await Promise.all(
-      models.map((m) => m.toProviderConfig()),
-    );
+    const { apiBaseUrl, apiKey, baseUrl, models, providerId, providerName } =
+      server;
+    let modelConfigs: ProviderModelConfig[] = [];
+
+    try {
+      await server.initialize();
+      modelConfigs = await Promise.all(models.map((m) => m.toProviderConfig()));
+    } catch (err) {
+      if (err instanceof ApiError && err.type === "authentication") {
+        // Don't add to `failedUrls` — the server IS reachable, auth just
+        // isn't configured yet, so the health indicator should stay green.
+        this.warnings.push(authRequiredMessage(baseUrl, providerId));
+      } else {
+        this.failedUrls.push(baseUrl);
+        return;
+      }
+    }
 
     pi.registerProvider(providerId, {
       name: providerName,
       baseUrl: apiBaseUrl,
       api: API_TYPE,
-      apiKey: apiKey,
+      apiKey,
       models: modelConfigs,
     });
   }

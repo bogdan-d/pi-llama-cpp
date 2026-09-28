@@ -13,6 +13,7 @@ import {
   REACT_TO_MODEL_SELECT,
   SERVER_TIMEOUT,
   SETTINGS_KEY,
+  SHOW_SERVER_URLS,
   SORT_BY,
   THINKING_BUDGETS,
 } from "../constants";
@@ -227,6 +228,15 @@ export class LlamaSettingsManager {
   }
 
   /**
+   * Resolves whether to show server URLs in the /models model list.
+   *
+   * @returns `true` if server URLs should be shown
+   */
+  async resolveShowServerUrls(): Promise<boolean> {
+    return (await this.getLlamaSettings()).showServerUrls ?? SHOW_SERVER_URLS;
+  }
+
+  /**
    * Persists one llamaSettings field to settings and reloads the in-memory
    * settings so resolvers see the change immediately.
    *
@@ -262,6 +272,8 @@ export class LlamaSettingsManager {
 }
 
 /**
- * Shared singleton instance used across the extension.
+ * Creates a new LlamaSettingsManager instance.
  */
-export const settings = new LlamaSettingsManager();
+export function createSettingsManager(): LlamaSettingsManager {
+  return new LlamaSettingsManager();
+}

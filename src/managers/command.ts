@@ -51,7 +51,7 @@ export class CommandManager {
     private readonly serverManager: ServerManager,
     private readonly settings: LlamaSettingsManager,
   ) {
-    this.modelsMenu = new ModelsMenu(serverManager);
+    this.modelsMenu = new ModelsMenu(serverManager, settings);
   }
 
   /**
@@ -106,6 +106,11 @@ export class CommandManager {
     // Notify about unreachable servers
     for (const url of this.serverManager.failedUrls) {
       this.notifyNotFound(ctx, url);
+    }
+
+    // Notify about other warnings (e.g. unauthorized servers)
+    for (const warning of this.serverManager.getWarnings()) {
+      ctx.ui.notify(warning, "warning");
     }
 
     if (args === "unload") {

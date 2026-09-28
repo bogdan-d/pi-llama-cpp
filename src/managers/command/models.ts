@@ -11,6 +11,7 @@ import { BaseModel } from "../../models/baseModel";
 import { errorMessage } from "../../utils/errors";
 import { EventManager } from "../events";
 import type { ServerManager } from "../server";
+import type { LlamaSettingsManager } from "../settings";
 
 /**
  * Interactive model selection/action flow for the `/models` command.
@@ -25,7 +26,10 @@ import type { ServerManager } from "../server";
  * server registry without coupling the menu to command routing.
  */
 export class ModelsMenu {
-  constructor(private readonly serverManager: ServerManager) {}
+  constructor(
+    private readonly serverManager: ServerManager,
+    private readonly settings: LlamaSettingsManager,
+  ) {}
 
   /**
    * Runs the interactive model selection menu.
@@ -181,6 +185,7 @@ export class ModelsMenu {
       );
       return null;
     }
+    const showServerUrls = await this.settings.resolveShowServerUrls();
 
     const labels = await Promise.all(
       models.map(async (model) => ({
@@ -200,9 +205,10 @@ export class ModelsMenu {
     const items: SelectItem[] = labels.map(({ label, serverUrl }, idx) => {
       const extraPadding = 2;
       const padLen = maxLength - graphemeLength(label) + extraPadding;
+      const serverSuffix = showServerUrls ? ` [Server: ${serverUrl}]` : "";
       return {
         value: String(idx),
-        label: `${label}${" ".repeat(padLen)} [Server: ${serverUrl}]`,
+        label: `${label}${" ".repeat(padLen)}${serverSuffix}`,
       };
     });
 
