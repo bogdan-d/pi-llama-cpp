@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POLLING_TIMEOUT, SERVER_TIMEOUT } from "../../src/constants";
+import { Mode } from "../../src/enums/mode";
 import { ServerStatus } from "../../src/enums/serverStatus";
+import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
 import type { LlamaSettingsManager } from "../../src/managers/settings";
 import { Server } from "../../src/server";
 import { createMockServer, makeSettingsStub, mockRpc } from "../mocks";
@@ -133,8 +135,56 @@ describe("Server fetchServerProps", () => {
     const server = createMockServer();
     const result = await server.fetchServerProps();
 
-    expect(result.role).toBe("router");
+    // Test mocks return a PropsEndpoint shape
+    expect((result as PropsEndpoint).role).toBe("router");
     expect(mockRpc).toHaveBeenCalledWith("/props?autoload=false");
+  });
+
+  it("should return LlamaSwapPropsError shape for llama-swap", async () => {
+    mockRpc.mockResolvedValueOnce({
+      src: "llama-swap",
+      error: {
+        message: "no model id could be identified",
+        type: "invalid_request_error",
+        param: null,
+        code: "not_found",
+      },
+    });
+
+    const server = createMockServer();
+    const result = await server.fetchServerProps();
+
+    expect((result as { src: string }).src).toBe("llama-swap");
+    expect(mockRpc).toHaveBeenCalledWith("/props?autoload=false");
+  });
+});
+
+describe("Server detectServerMode", () => {
+  it("should detect LLAMASWAP mode when /props returns src", async () => {
+    // initialize() calls fetchModels() first, then fetchServerProps()
+    mockRpc
+      .mockResolvedValueOnce({
+        data: [{ id: "test-model" }],
+        object: "list",
+      })
+      .mockResolvedValueOnce({
+        src: "llama-swap",
+        error: {
+          message: "no model id could be identified",
+          type: "invalid_request_error",
+          param: null,
+          code: "not_found",
+        },
+      });
+
+    const server = createMockServer({
+      initialize: async () => {
+        await Server.prototype.initialize.call(server);
+      },
+    });
+    await server.initialize();
+
+    expect(server.models[0].mode).toBe(Mode.LLAMASWAP);
   });
 });
 

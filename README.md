@@ -12,6 +12,7 @@ A [Pi Coding Agent](https://pi.dev/) extension that integrates with running [lla
 - **Flexible URL resolution** — configures the server via `llamaSettings` (project/global), environment variable, or legacy `llamaServerUrl`
 - **Auth support** — allows to login into a llama.cpp server that was secured with an API key
 - **Multiple server support** — connect to multiple llama.cpp servers simultaneously via `llamaSettings.servers` or semicolon-separated URLs
+- **Basic llama-swap support** — auto-detects and provides basic integration with [llama-swap](https://github.com/mostlygeek/llama-swap) gateways
 - **Thinking budget support** — configurable token budgets for model reasoning/thinking, mapped to Pi's thinking levels
 - **Real-time progress tracking** — live loading progress via SSE (falls back to polling)
 
@@ -277,6 +278,10 @@ llama-server --model path/to/model.gguf ...
 
 > **Note:** The ik_llama.cpp fork is not legacy at all, but it uses an old way of describing models compared to llama.cpp.
 
+- For llama-swap mode, point the extension at a running [llama-swap](https://github.com/mostlygeek/llama-swap) instance instead of a raw llama.cpp server. The extension auto-detects this mode via the `src` field in the server props response.
+
+> **Note:** llama-swap support is basic — only model listing, status, load/unload, and capability detection are implemented.
+
 The extension determines the context size as follows:
 
 - A per-model `contextSize` override (see [Model Overrides](#model-overrides)) takes precedence over everything below
@@ -285,6 +290,7 @@ The extension determines the context size as follows:
   - When not loaded, reads `--ctx-size` and/or `--fit-ctx` from the server arguments (which can also originate from the **presets.ini** file the llama.cpp server uses to load its models).
 - **Single mode** — reads `meta.n_ctx` from the `/v1/models` endpoint
 - **Legacy mode** — reads `max_model_len` from `/v1/models`, falling back to `n_ctx` from `/props`
+- **Llama-swap mode** — reads `meta.n_ctx` from the llama-swap server via `/v1/models`
 - Falls back to `128000` if not available
 
 ### Commands

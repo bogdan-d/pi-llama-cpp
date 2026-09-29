@@ -8,6 +8,7 @@ import { Mode } from "./enums/mode";
 import { ServerStatus } from "./enums/serverStatus";
 import { ModelsEndpoint } from "./interfaces/endpoints/models";
 import {
+  LlamaSwapPropsError,
   PropsEndpoint,
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
@@ -16,6 +17,7 @@ import type { ModelOverride } from "./interfaces/settings";
 import type { LlamaSettingsManager } from "./managers/settings";
 import { BaseModel } from "./models/baseModel";
 import { LegacyModel } from "./models/legacyModel";
+import { LlamaSwapModel } from "./models/llamaSwapModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
@@ -147,6 +149,7 @@ export class Server {
       [Mode.ROUTER]: RouterModel,
       [Mode.LEGACY]: LegacyModel,
       [Mode.SINGLE]: SingleModel,
+      [Mode.LLAMASWAP]: LlamaSwapModel,
     }[mode];
 
     const models: BaseModel[] = data.map((m) => new modelCtor(m, this));
@@ -163,9 +166,12 @@ export class Server {
    * @returns The detected mode
    */
   private async detectServerMode(data: ModelsEndpoint["data"]): Promise<Mode> {
-    const { role } = await this.fetchServerProps();
+    const serverProps = await this.fetchServerProps();
 
-    if (role === "router") return Mode.ROUTER;
+    if ("src" in serverProps && serverProps.src === "llama-swap")
+      return Mode.LLAMASWAP;
+    if ("role" in serverProps && serverProps.role === "router")
+      return Mode.ROUTER;
     if ("max_model_len" in data[0]) return Mode.LEGACY;
     return Mode.SINGLE;
   }
@@ -197,12 +203,16 @@ export class Server {
   }
 
   /**
-   * Fetches general properties of the server
+   * Fetches general properties of the server.
+   * llama-server returns {@link PropsEndpoint}; llama-swap returns
+   * {@link LlamaSwapPropsError} (an error response with a `src` discriminator).
    *
-   * @return The properties of the server
+   * @return The server properties
    */
-  async fetchServerProps(): Promise<PropsEndpoint> {
-    return await this.apiClient.get<PropsEndpoint>("/props?autoload=false");
+  async fetchServerProps(): Promise<PropsEndpoint | LlamaSwapPropsError> {
+    return await this.apiClient.get<PropsEndpoint | LlamaSwapPropsError>(
+      "/props?autoload=false",
+    );
   }
 
   /**

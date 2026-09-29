@@ -14,6 +14,20 @@ export interface PropsEndpoint {
 }
 
 /**
+ * llama-swap returns a different shape for /props (without a model ID):
+ * an error response with a `src` that we can use as a trick to detect it.
+ */
+export interface LlamaSwapPropsError {
+  src: "llama-swap";
+  error: {
+    message: string;
+    type: string;
+    param: null;
+    code: string;
+  };
+}
+
+/**
  * The structure of llama-server's /props?model=<id> endpoint
  */
 export interface PropsModelEndpoint {

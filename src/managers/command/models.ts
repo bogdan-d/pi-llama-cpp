@@ -217,10 +217,9 @@ export class ModelsMenu {
     const base = [Action.INFO, Action.CANCEL];
 
     const actions: Record<Status, Array<Action>> = {
-      [Status.LOADED]:
-        model.mode === Mode.ROUTER
-          ? [Action.SWITCH, Action.UNLOAD, ...base]
-          : [Action.SWITCH, ...base],
+      [Status.LOADED]: [Mode.ROUTER, Mode.LLAMASWAP].includes(model.mode)
+        ? [Action.SWITCH, Action.UNLOAD, ...base]
+        : [Action.SWITCH, ...base],
       [Status.LOADING]: [...base],
       [Status.FAILED]: [Action.RETRY, ...base],
       [Status.SLEEPING]:
