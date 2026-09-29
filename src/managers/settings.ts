@@ -150,11 +150,28 @@ export class LlamaSettingsManager {
   /**
    * Resolves API key for the provider ID using Pi's stored credentials.
    *
+   * @param providerId The provider ID
    * @returns The API key to use for the provider
    */
   resolveApiKey(providerId: string): string {
     const credential = readStoredCredential(providerId) as ApiKeyCredential;
-    return credential?.key ?? API_KEY_PLACEHOLDER;
+    if (!credential) return API_KEY_PLACEHOLDER;
+
+    // Extract the values of the credential
+    const { key, env } = credential;
+    if (!key) return API_KEY_PLACEHOLDER;
+
+    // Scan for standard keys
+    if (!key.startsWith("$")) return key;
+
+    // Extract from env if stored in file
+    const keyName = key.split("$")[1];
+    if (env?.[keyName]) return env?.[keyName] ?? API_KEY_PLACEHOLDER;
+
+    // Parse from from process.env otherwise
+    const apiKey = process.env[keyName];
+
+    return apiKey ?? API_KEY_PLACEHOLDER;
   }
 
   /**
