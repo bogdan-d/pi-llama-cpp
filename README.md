@@ -207,17 +207,48 @@ Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:8080)**) 
 If your llama.cpp server requires authentication, use `/login` in Pi, select the "API key" option, and choose the provider from the list that correlates with the server needing the API key.
 
 Alternatively, configure the API key in `~/.pi/agent/auth.json`:
-Use the provider ID `llama-server=<url>` (or your custom `id` if you set one in `llamaSettings.servers`):
+Use the provider ID `llama-server=<url>` (or your custom `id` if you set one in `llamaSettings.servers`).
+
+The `key` field supports several formats:
+
+| Format            | Example                                      | Description                                |
+| ----------------- | -------------------------------------------- | ------------------------------------------ |
+| **Literal**       | `"sk-abc123"`                                | API key stored directly                    |
+| **Env ref**       | `"$OPENAI_API_KEY"` or `"${OPENAI_API_KEY}"` | Resolved from `process.env` or `env` field |
+| **Shell command** | `"!cat ~/.secrets/llama-key"`                | Stdout of the command is used              |
+| **Escape**        | `"$$literal"`                                | `$$` → literal `$`, `$!` → literal `!`     |
 
 ```json
 {
   "llama-server=http://127.0.0.1:8080": {
     "type": "api_key",
-    "key": "<key-for-server-1>"
+    "key": "sk-abc123"
   },
   "llama-server=https://some-url-for-llama-cpp": {
     "type": "api_key",
-    "key": "<key-for-server-2>"
+    "key": "$LLAMA_API_KEY"
+  },
+  "llama-server=https://secure-server": {
+    "type": "api_key",
+    "key": "!cat ~/.secrets/llama-key"
+  },
+  "llama-server=https://braced-ref": {
+    "type": "api_key",
+    "key": "${API_KEY}"
+  }
+}
+```
+
+For env ref formats, you can also store the variable value alongside the key using the `env` field:
+
+```json
+{
+  "llama-server=http://127.0.0.1:8080": {
+    "type": "api_key",
+    "key": "$MY_KEY",
+    "env": {
+      "MY_KEY": "sk-abc123"
+    }
   }
 }
 ```

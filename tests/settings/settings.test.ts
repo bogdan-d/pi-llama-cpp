@@ -352,6 +352,67 @@ describe("API key resolution", () => {
       "llama-server=http://127.0.0.1:8080",
     );
   });
+
+  it("should resolve $VAR env reference from process.env", () => {
+    mockReadStoredCredential.mockReturnValue({ key: "$MY_API_KEY" });
+    process.env.MY_API_KEY = "env-resolved-key";
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe("env-resolved-key");
+    delete process.env.MY_API_KEY;
+  });
+
+  it("should resolve ${VAR} braced env reference from process.env", () => {
+    mockReadStoredCredential.mockReturnValue({ key: "${MY_API_KEY}" });
+    process.env.MY_API_KEY = "braced-resolved-key";
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe("braced-resolved-key");
+    delete process.env.MY_API_KEY;
+  });
+
+  it("should prefer credential.env over process.env", () => {
+    mockReadStoredCredential.mockReturnValue({
+      key: "$MY_KEY",
+      env: { MY_KEY: "credential-env-value" },
+    });
+    process.env.MY_KEY = "process-env-value";
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe("credential-env-value");
+    delete process.env.MY_KEY;
+  });
+
+  it("should return placeholder when env var is not set", () => {
+    mockReadStoredCredential.mockReturnValue({ key: "$UNSET_VAR" });
+    delete process.env.UNSET_VAR;
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe(API_KEY_PLACEHOLDER);
+  });
+
+  // Shell command tests are covered by Pi core's resolve-config-value tests.
+  // The local implementation delegates to execSync which is tested there.
+
+  it("should escape $$ as literal $", () => {
+    mockReadStoredCredential.mockReturnValue({ key: "$$LITERAL" });
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe("$LITERAL");
+  });
+
+  it("should escape $! as literal !", () => {
+    mockReadStoredCredential.mockReturnValue({ key: "$!LITERAL" });
+
+    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+
+    expect(result).toBe("!LITERAL");
+  });
 });
 
 describe("Server with custom id", () => {
