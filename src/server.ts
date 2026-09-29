@@ -268,4 +268,24 @@ export class Server {
       model,
     });
   }
+
+  /**
+   * Loads a model on a llama-swap server (GET /upstream/{id}).
+   *
+   * @param model The model ID to load
+   */
+  async llamaSwapLoad(model: string): Promise<void> {
+    this.apiClient.clearCache();
+    await this.apiClient.rawGet(`/upstream/${model}`);
+  }
+
+  /**
+   * Unloads a model on a llama-swap server (POST /api/models/unload/{id}).
+   *
+   * @param model The model ID to unload
+   */
+  async llamaSwapUnload(model: string): Promise<void> {
+    this.apiClient.clearCache();
+    await this.apiClient.rawPost(`/api/models/unload/${model}`);
+  }
 }

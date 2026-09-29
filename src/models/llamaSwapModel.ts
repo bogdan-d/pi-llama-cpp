@@ -73,11 +73,10 @@ export class LlamaSwapModel extends BaseModel {
     const status = await this.getStatus();
     if (status === Status.LOADED) return;
 
-    // GET method
-    const url = `${this.server.baseUrl}/upstream/${this.id}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
+    try {
+      await this.server.llamaSwapLoad(this.id);
+    } catch (err) {
+      console.warn({ err });
       throw new Error(`Model loading failed: ${this.id}`);
     }
   }
@@ -86,8 +85,6 @@ export class LlamaSwapModel extends BaseModel {
    * Unloads the model in the llama-swap server
    */
   override async unload(): Promise<void> {
-    // POST method
-    const url = `${this.server.baseUrl}/api/models/unload/${this.id}`;
-    await fetch(url, { method: "POST" });
+    await this.server.llamaSwapUnload(this.id);
   }
 }

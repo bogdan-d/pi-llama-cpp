@@ -68,6 +68,8 @@ export const createFakeClients = (): {
     get: (endpoint: string) => mockRpc(endpoint),
     post: (endpoint: string, body?: Record<string, unknown>) =>
       mockRpc(endpoint, body),
+    rawGet: (endpoint: string) => mockRpc(endpoint),
+    rawPost: (endpoint: string) => mockRpc(endpoint),
     clearCache: vi.fn(),
   } as unknown as ApiClient;
   const sseManager = {

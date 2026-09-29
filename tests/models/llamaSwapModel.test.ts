@@ -283,49 +283,34 @@ describe("LlamaSwapModel load", () => {
   it("should call GET to /upstream/{id} when model is not loaded", async () => {
     const model = createModel();
     // Override getStatus to return UNLOADED so load proceeds
-    const originalGetStatus = model.getStatus.bind(model);
     model.getStatus = vi.fn().mockResolvedValue(Status.UNLOADED);
 
-    // mockRpc is used by fetchModels; load uses plain fetch, so we spy on it
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
+    // mockRpc is used by ApiClient; load -> llamaSwapLoad -> apiClient.get
+    mockRpc.mockResolvedValue({});
 
     await model.load();
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:8080/upstream/test-model",
-    );
-    fetchSpy.mockRestore();
+    expect(mockRpc).toHaveBeenCalledWith("/upstream/test-model");
   });
 
   it("should throw when the GET request fails", async () => {
     const model = createModel();
     model.getStatus = vi.fn().mockResolvedValue(Status.UNLOADED);
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: false,
-      status: 500,
-    } as Response);
+    mockRpc.mockRejectedValue(new Error("GET failed"));
 
     await expect(model.load()).rejects.toThrow(
       "Model loading failed: test-model",
     );
-
-    fetchSpy.mockRestore();
   });
 
   it("should not call fetch when model is already loaded", async () => {
     const model = createModel();
     model.getStatus = vi.fn().mockResolvedValue(Status.LOADED);
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
     await model.load();
 
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 });
 
@@ -333,18 +318,10 @@ describe("LlamaSwapModel unload", () => {
   it("should call POST to /api/models/unload/{id}", async () => {
     const model = createModel();
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
+    mockRpc.mockResolvedValue({});
 
     await model.unload();
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:8080/api/models/unload/test-model",
-      { method: "POST" },
-    );
-
-    fetchSpy.mockRestore();
+    expect(mockRpc).toHaveBeenCalledWith("/api/models/unload/test-model");
   });
 });
