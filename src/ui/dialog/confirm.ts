@@ -39,7 +39,7 @@ export class ConfirmDialog extends BaseDialog {
 
   // -- helpers -------------------------------------------------------------------
 
-  protected get inputTarget() {
+  protected override get inputTarget() {
     return this.list;
   }
 }

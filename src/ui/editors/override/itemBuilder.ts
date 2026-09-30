@@ -12,7 +12,7 @@ export class OverrideItemBuilder extends ItemBuilder<
   OverrideEntry,
   OverrideField
 > {
-  protected get fields(): readonly OverrideField[] {
+  protected override get fields(): readonly OverrideField[] {
     return OverrideFields.all;
   }
 
@@ -21,7 +21,10 @@ export class OverrideItemBuilder extends ItemBuilder<
    * an `InputDialog` submenu (validating against the field definition)
    * for "input" fields.
    */
-  protected decorate(def: OverrideField, base: SettingItem): SettingItem {
+  protected override decorate(
+    def: OverrideField,
+    base: SettingItem,
+  ): SettingItem {
     if (def.type === "finite") {
       return { ...base, values: [...(def.options ?? [])] };
     }

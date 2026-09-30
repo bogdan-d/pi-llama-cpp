@@ -12,6 +12,7 @@ A [Pi Coding Agent](https://pi.dev/) extension that integrates with running [lla
 - **Flexible URL resolution** — configures the server via `llamaSettings` (project/global), environment variable, or legacy `llamaServerUrl`
 - **Auth support** — allows to login into a llama.cpp server that was secured with an API key
 - **Multiple server support** — connect to multiple llama.cpp servers simultaneously via `llamaSettings.servers` or semicolon-separated URLs
+- **Basic llama-swap support** — auto-detects and provides basic integration with [llama-swap](https://github.com/mostlygeek/llama-swap) gateways
 - **Thinking budget support** — configurable token budgets for model reasoning/thinking, mapped to Pi's thinking levels
 - **Real-time progress tracking** — live loading progress via SSE (falls back to polling)
 
@@ -207,17 +208,48 @@ Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:8080)**) 
 If your llama.cpp server requires authentication, use `/login` in Pi, select the "API key" option, and choose the provider from the list that correlates with the server needing the API key.
 
 Alternatively, configure the API key in `~/.pi/agent/auth.json`:
-Use the provider ID `llama-server=<url>` (or your custom `id` if you set one in `llamaSettings.servers`):
+Use the provider ID `llama-server=<url>` (or your custom `id` if you set one in `llamaSettings.servers`).
+
+The `key` field supports several formats:
+
+| Format            | Example                                      | Description                                |
+| ----------------- | -------------------------------------------- | ------------------------------------------ |
+| **Literal**       | `"sk-abc123"`                                | API key stored directly                    |
+| **Env ref**       | `"$OPENAI_API_KEY"` or `"${OPENAI_API_KEY}"` | Resolved from `process.env` or `env` field |
+| **Shell command** | `"!cat ~/.secrets/llama-key"`                | Stdout of the command is used              |
+| **Escape**        | `"$$literal"`                                | `$$` → literal `$`, `$!` → literal `!`     |
 
 ```json
 {
   "llama-server=http://127.0.0.1:8080": {
     "type": "api_key",
-    "key": "<key-for-server-1>"
+    "key": "sk-abc123"
   },
   "llama-server=https://some-url-for-llama-cpp": {
     "type": "api_key",
-    "key": "<key-for-server-2>"
+    "key": "$LLAMA_API_KEY"
+  },
+  "llama-server=https://secure-server": {
+    "type": "api_key",
+    "key": "!cat ~/.secrets/llama-key"
+  },
+  "llama-server=https://braced-ref": {
+    "type": "api_key",
+    "key": "${API_KEY}"
+  }
+}
+```
+
+For env ref formats, you can also store the variable value alongside the key using the `env` field:
+
+```json
+{
+  "llama-server=http://127.0.0.1:8080": {
+    "type": "api_key",
+    "key": "$MY_KEY",
+    "env": {
+      "MY_KEY": "sk-abc123"
+    }
   }
 }
 ```
@@ -246,6 +278,10 @@ llama-server --model path/to/model.gguf ...
 
 > **Note:** The ik_llama.cpp fork is not legacy at all, but it uses an old way of describing models compared to llama.cpp.
 
+- For llama-swap mode, point the extension at a running [llama-swap](https://github.com/mostlygeek/llama-swap) instance instead of a raw llama.cpp server. The extension auto-detects this mode via the `src` field in the server props response.
+
+> **Note:** llama-swap support is basic — only model listing, status, load/unload, and capability detection are implemented.
+
 The extension determines the context size as follows:
 
 - A per-model `contextSize` override (see [Model Overrides](#model-overrides)) takes precedence over everything below
@@ -254,6 +290,7 @@ The extension determines the context size as follows:
   - When not loaded, reads `--ctx-size` and/or `--fit-ctx` from the server arguments (which can also originate from the **presets.ini** file the llama.cpp server uses to load its models).
 - **Single mode** — reads `meta.n_ctx` from the `/v1/models` endpoint
 - **Legacy mode** — reads `max_model_len` from `/v1/models`, falling back to `n_ctx` from `/props`
+- **Llama-swap mode** — reads `meta.n_ctx` from the llama-swap server via `/v1/models`
 - Falls back to `128000` if not available
 
 ### Commands

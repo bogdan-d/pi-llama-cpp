@@ -82,6 +82,30 @@ export class ApiClient {
   }
 
   /**
+   * Makes a raw GET request that does not parse JSON. Useful for endpoints
+   * that return empty or non-JSON responses.
+   *
+   * @param endpoint The endpoint path to fetch
+   */
+  async rawGet(endpoint: string): Promise<void> {
+    return this.do_request<void>(endpoint, "GET", undefined, false);
+  }
+
+  /**
+   * Makes a raw POST request that does not parse JSON. Useful for endpoints
+   * that return empty or non-JSON responses.
+   *
+   * @param endpoint The endpoint path to post to
+   * @param body The optional request body
+   */
+  async rawPost(
+    endpoint: string,
+    body?: Record<string, unknown>,
+  ): Promise<void> {
+    return this.do_request<void>(endpoint, "POST", body, false);
+  }
+
+  /**
    * Clears the entire cache.
    */
   clearCache(): void {
@@ -134,6 +158,44 @@ export class ApiClient {
   }
 
   /**
+   * Makes a raw request to the llama-server.
+   * This bypasses caching and deduplication.
+   *
+   * @param endpoint The endpoint path
+   * @param method The HTTP method
+   * @param body The optional request body
+   * @param parseJson Whether to parse the response as JSON (default: true)
+   * @returns The parsed JSON response, or void if parseJson is false
+   * @throws ApiError with status 401 when the server rejects the request
+   *   due to authentication (invalid/missing API key).
+   */
+  private async do_request<T>(
+    endpoint: string,
+    method: "GET" | "POST",
+    body?: Record<string, unknown>,
+    parseJson = true,
+  ): Promise<T | void> {
+    const url = `${this.baseUrl}${endpoint}`;
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        ...(method === "POST"
+          ? { "Content-Type": "application/json" }
+          : undefined),
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      ...(body ? { body: JSON.stringify(body) } : undefined),
+    });
+
+    if (res.status === 401) {
+      throw new ApiError("authentication", res.status);
+    }
+
+    return parseJson ? ((await res.json()) as T) : (undefined as T);
+  }
+
+  /**
    * Makes a raw GET request to the llama-server.
    * This bypasses caching and deduplication.
    *
@@ -143,17 +205,7 @@ export class ApiClient {
    *   due to authentication (invalid/missing API key).
    */
   private async do_get<T>(endpoint: string): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-    });
-
-    if (res.status === 401) {
-      throw new ApiError("authentication", res.status);
-    }
-
-    return res.json();
+    return this.do_request<T>(endpoint, "GET") as Promise<T>;
   }
 
   /**
@@ -170,21 +222,6 @@ export class ApiClient {
     endpoint: string,
     body?: Record<string, unknown>,
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    if (res.status === 401) {
-      throw new ApiError("authentication", res.status);
-    }
-
-    return res.json();
+    return this.do_request<T>(endpoint, "POST", body) as Promise<T>;
   }
 }

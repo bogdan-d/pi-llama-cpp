@@ -3,7 +3,7 @@ import { Mode } from "../enums/mode";
 import { SingleModel } from "./singleModel";
 
 export class LegacyModel extends SingleModel {
-  get mode(): Mode {
+  override get mode(): Mode {
     return Mode.LEGACY;
   }
 
@@ -13,7 +13,7 @@ export class LegacyModel extends SingleModel {
    *
    * @returns The context size
    */
-  protected async getContextSize(): Promise<number> {
+  protected override async getContextSize(): Promise<number> {
     const props = await this.server.fetchModelProps(this.id);
     const models = await this.server.fetchModels();
 
@@ -34,7 +34,7 @@ export class LegacyModel extends SingleModel {
    *
    * @returns An array of capabilities, as expected by Pi
    */
-  protected async getCapabilities(): Promise<("text" | "image")[]> {
+  protected override async getCapabilities(): Promise<("text" | "image")[]> {
     try {
       return await super.getCapabilities();
     } catch {

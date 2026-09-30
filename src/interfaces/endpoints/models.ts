@@ -67,4 +67,10 @@ interface MetaProperty {
   n_embd: number;
   n_params: number;
   size: number;
+
+  // llama-swap extension
+  llamaswap?: {
+    aliases: string[];
+    type: string;
+  };
 }

@@ -24,6 +24,7 @@ import {
 } from "../interfaces/settings";
 import type { SortBy } from "../interfaces/sortBy";
 import { Server } from "../server";
+import { CredentialResolver } from "../utils/credentialResolver";
 import { SettingsStore } from "../utils/settingsStore";
 import { UrlResolver } from "../utils/urlResolver";
 
@@ -46,6 +47,9 @@ export class LlamaSettingsManager {
       return false;
     }
   }
+
+  /** Delegates credential key resolution (see `utils/credentialResolver`). */
+  private credentialResolver = new CredentialResolver();
 
   /** Delegated multi-source URL resolution chain (see `utils/urlResolver`). */
   private urlResolver = new UrlResolver({
@@ -149,12 +153,16 @@ export class LlamaSettingsManager {
 
   /**
    * Resolves API key for the provider ID using Pi's stored credentials.
+   * Delegates to `CredentialResolver` for key format handling.
    *
+   * @param providerId The provider ID
    * @returns The API key to use for the provider
    */
   resolveApiKey(providerId: string): string {
     const credential = readStoredCredential(providerId) as ApiKeyCredential;
-    return credential?.key ?? API_KEY_PLACEHOLDER;
+    if (!credential?.key) return API_KEY_PLACEHOLDER;
+
+    return this.credentialResolver.resolve(credential.key, credential.env);
   }
 
   /**

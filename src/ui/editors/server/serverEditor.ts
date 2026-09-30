@@ -74,7 +74,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
 
   // -- abstract hooks -------------------------------------------------------
 
-  protected async buildSettingsList(): Promise<SettingsList> {
+  protected override async buildSettingsList(): Promise<SettingsList> {
     const builder = new ServerItemBuilder(this.dialogs);
     const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
     // Run auth + health probes in parallel; ⛔ wins if auth fails,
@@ -131,7 +131,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     });
   }
 
-  protected beginAdd(): void {
+  protected override beginAdd(): void {
     const wizard = new ServerWizard(this.dialogs, (dialog) =>
       this.openDialog(dialog),
     );
@@ -144,7 +144,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     );
   }
 
-  protected deleteSelected(): void {
+  protected override deleteSelected(): void {
     const idx = this.selectedIndex;
     const next = this.options.servers.filter((_, i) => i !== idx);
     void this.persistSnapshot(next, () => {
@@ -152,17 +152,17 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     });
   }
 
-  protected readonly emptyHintKey = "emptyServers" as const;
+  protected override readonly emptyHintKey = "emptyServers" as const;
 
-  protected getRowId(index: number): string {
+  protected override getRowId(index: number): string {
     return `server-${index}`;
   }
 
-  protected getRowLabel(index: number): string {
+  protected override getRowLabel(index: number): string {
     return this.options.servers[index]?.url ?? "";
   }
 
-  protected get deleteTitle(): string {
+  protected override get deleteTitle(): string {
     return TITLES.deleteServer;
   }
 
