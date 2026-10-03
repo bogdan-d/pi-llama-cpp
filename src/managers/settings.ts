@@ -245,8 +245,8 @@ export class LlamaSettingsManager {
   }
 
   /**
-   * Persists one llamaSettings field to settings and reloads the in-memory
-   * settings so resolvers see the change immediately.
+   * Persists multiple llamaSettings fields to settings and reloads the
+   * in-memory settings so resolvers see the change immediately.
    *
    * When `scope` is `"auto"` (default), writes to the project `.pi/settings.json`
    * if it exists, otherwise to global `~/.pi/agent/settings.json`.
@@ -254,10 +254,27 @@ export class LlamaSettingsManager {
    * Rejects if the file can't be read (e.g. invalid JSON) or written —
    * in-memory state stays consistent (reload only on success).
    */
-  async setLlamaSettings(partial: Partial<LlamaSettings>): Promise<void> {
-    for (const [key, value] of Object.entries(partial)) {
-      await this.setLlamaSetting(key as keyof LlamaSettings, value);
-    }
+  async setLlamaSettings(
+    partial: Partial<LlamaSettings>,
+    scope: "auto" | "global" | "project" = "auto",
+  ): Promise<void> {
+    const store =
+      scope === "auto"
+        ? (await this.hasProjectSettings())
+          ? this.projectStore
+          : this.globalStore
+        : scope === "project"
+          ? this.projectStore
+          : this.globalStore;
+
+    await store.updateKey(SETTINGS_KEY, (current) => {
+      const merged =
+        typeof current === "object" && current !== null
+          ? { ...(current as Record<string, unknown>) }
+          : {};
+      return { ...merged, ...partial };
+    });
+    await this.settingsManager.reload();
   }
 
   /**
@@ -290,6 +307,39 @@ export class LlamaSettingsManager {
           ? (current as Record<string, unknown>)
           : {};
       return { ...merged, [key]: value };
+    });
+    await this.settingsManager.reload();
+  }
+
+  /**
+   * Deletes one llamaSettings field from settings and reloads the in-memory
+   * settings so resolvers fall back to the built-in default.
+   *
+   * When `scope` is `"auto"` (default), deletes from the project `.pi/settings.json`
+   * if it exists, otherwise from global `~/.pi/agent/settings.json`.
+   *
+   * Rejects if the file can't be read or written.
+   */
+  async deleteLlamaSetting<K extends keyof LlamaSettings>(
+    key: K,
+    scope: "auto" | "global" | "project" = "auto",
+  ): Promise<void> {
+    const store =
+      scope === "auto"
+        ? (await this.hasProjectSettings())
+          ? this.projectStore
+          : this.globalStore
+        : scope === "project"
+          ? this.projectStore
+          : this.globalStore;
+
+    await store.updateKey(SETTINGS_KEY, (current) => {
+      const merged =
+        typeof current === "object" && current !== null
+          ? { ...(current as Record<string, unknown>) }
+          : {};
+      delete merged[key as string];
+      return merged;
     });
     await this.settingsManager.reload();
   }

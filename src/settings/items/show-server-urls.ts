@@ -10,7 +10,7 @@ export class ShowServerUrlsSettingsItem extends SettingsItem<boolean> {
   readonly values = ["on", "off"];
 
   format(config: LlamaSettings): string {
-    return config[this.id] ?? SHOW_SERVER_URLS_DEFAULT ? "on" : "off";
+    return (config[this.id] ?? SHOW_SERVER_URLS_DEFAULT) ? "on" : "off";
   }
 
   setConfig(_config: LlamaSettings, value: string): ValidationResult {

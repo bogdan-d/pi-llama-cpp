@@ -12,6 +12,7 @@ import type {
 import { SettingsList } from "@earendil-works/pi-tui";
 import type { LlamaSettings } from "../../interfaces/settings";
 import type { LlamaSettingsManager } from "../../managers/settings";
+import { ResettableSettingsList } from "../../ui/resettable-settings-list";
 import { SETTINGS_ITEMS } from "../defaults";
 
 /** Options passed to the settings editor. */
@@ -95,34 +96,47 @@ export class SettingsEditor implements Component, Focusable {
   private async buildList(): Promise<void> {
     this.currentConfig = await this.options.settings.getLlamaSettings();
     if (!this.currentConfig) return;
-    const items = Object.values(SETTINGS_ITEMS)
-      .map((item) => ({
-        id: item.id,
-        label: item.label,
-        description: item.description,
-        currentValue: item.format(this.currentConfig!),
-        ...(item.values ? { values: item.values } : {}),
-      }))
 
+    const items = Object.values(SETTINGS_ITEMS).map((item) => ({
+      id: item.id,
+      label: item.label,
+      description: item.description,
+      currentValue: item.format(this.currentConfig!),
+      ...(item.values ? { values: item.values } : {}),
+    }));
 
-    this.settingsList = new SettingsList(
+    const onChangeFn = async (id: string, newValue: string): Promise<void> => {
+      if (!this.currentConfig) return;
+      const item = SETTINGS_ITEMS[id];
+      if (!item) return;
+      const result = item.setConfig(this.currentConfig, newValue);
+      if (!result.valid) {
+        this.options.onError(result.errors?.join("\n") ?? "Invalid value.");
+        return;
+      }
+      await this.options.settings.setLlamaSettings(result.config!);
+      this.currentConfig = await this.options.settings.getLlamaSettings();
+      this.settingsList?.updateValue(id, item.format(this.currentConfig));
+      this.options.tui.requestRender();
+    };
+
+    const onResetFn = async (id: string): Promise<void> => {
+      const item = SETTINGS_ITEMS[id];
+      if (!item) return;
+      await this.options.settings.deleteLlamaSetting(item.id);
+      this.currentConfig = await this.options.settings.getLlamaSettings();
+      this.settingsList?.updateValue(id, item.format(this.currentConfig));
+      this.options.tui.requestRender();
+    };
+
+    this.settingsList = new ResettableSettingsList(
       items,
       Math.min(items.length + 2, 15),
       getSettingsListTheme(),
-      async (id, newValue) => {
-        if (!this.currentConfig) return;
-        const item = SETTINGS_ITEMS[id];
-        if (!item) return;
-        const result = item.setConfig(this.currentConfig, newValue);
-        if (!result.valid) {
-          this.options.onError(result.errors?.join("\n") ?? "Invalid value.");
-          return;
-        }
-        await this.options.settings.setLlamaSettings(result.config!);
-        // Refresh config after write
-        this.currentConfig = await this.options.settings.getLlamaSettings();
-      },
+      onChangeFn,
       () => this.options.done(),
+      onResetFn,
+      this.options.tui,
     );
   }
 }

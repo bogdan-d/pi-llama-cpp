@@ -11,7 +11,7 @@ export class AutoloadOnMessageSettingsItem extends SettingsItem<boolean> {
   readonly values = ["on", "off"];
 
   format(config: LlamaSettings): string {
-    return config[this.id] ?? AUTOLOAD_ON_MESSAGE_DEFAULT ? "on" : "off";
+    return (config[this.id] ?? AUTOLOAD_ON_MESSAGE_DEFAULT) ? "on" : "off";
   }
 
   setConfig(_config: LlamaSettings, value: string): ValidationResult {

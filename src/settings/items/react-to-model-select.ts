@@ -10,7 +10,7 @@ export class ReactToModelSelectSettingsItem extends SettingsItem<boolean> {
   readonly values = ["on", "off"];
 
   format(config: LlamaSettings): string {
-    return config[this.id] ?? REACT_TO_MODEL_SELECT_DEFAULT ? "on" : "off";
+    return (config[this.id] ?? REACT_TO_MODEL_SELECT_DEFAULT) ? "on" : "off";
   }
 
   setConfig(_config: LlamaSettings, value: string): ValidationResult {
