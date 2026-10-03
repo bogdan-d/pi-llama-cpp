@@ -80,7 +80,7 @@ export class LlamaSettingsManager {
    * Convenience method for the `llamaSettings` key.
    * Reloads settings from disk before reading.
    */
-  private async getLlamaSettings(): Promise<LlamaSettings> {
+  async getLlamaSettings(): Promise<LlamaSettings> {
     return (await this.getMergedSettings())[SETTINGS_KEY] ?? {};
   }
 
@@ -242,6 +242,22 @@ export class LlamaSettingsManager {
    */
   async resolveShowServerUrls(): Promise<boolean> {
     return (await this.getLlamaSettings()).showServerUrls ?? SHOW_SERVER_URLS;
+  }
+
+  /**
+   * Persists one llamaSettings field to settings and reloads the in-memory
+   * settings so resolvers see the change immediately.
+   *
+   * When `scope` is `"auto"` (default), writes to the project `.pi/settings.json`
+   * if it exists, otherwise to global `~/.pi/agent/settings.json`.
+   *
+   * Rejects if the file can't be read (e.g. invalid JSON) or written —
+   * in-memory state stays consistent (reload only on success).
+   */
+  async setLlamaSettings(partial: Partial<LlamaSettings>): Promise<void> {
+    for (const [key, value] of Object.entries(partial)) {
+      await this.setLlamaSetting(key as keyof LlamaSettings, value);
+    }
   }
 
   /**

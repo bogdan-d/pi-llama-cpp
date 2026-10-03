@@ -62,7 +62,7 @@ describe("ServerManager", () => {
       apiKey: "key-2",
       models: [mockModel],
     });
-    const manager = await createManager(server1, server2);
+    await createManager(server1, server2);
 
     expect(mockPi.registerProvider).toHaveBeenCalledTimes(2);
     expect(mockPi.registerProvider).toHaveBeenCalledWith(

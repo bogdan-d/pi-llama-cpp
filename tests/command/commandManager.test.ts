@@ -6,13 +6,10 @@ import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
 import { ServerManager } from "../../src/managers/server";
 import type { LlamaSettingsManager } from "../../src/managers/settings";
+import { SETTINGS_ITEMS } from "../../src/settings/defaults";
+import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
 import { ServerDisplay } from "../../src/ui/editors/server/utils";
-import {
-  applySettingChange,
-  buildSettingsItems,
-  formatMs,
-} from "../../src/ui/settings";
 import {
   createMockCtx,
   createMockModel,
@@ -156,9 +153,9 @@ describe("CommandManager", () => {
       expect(formatMs(1500)).toBe("1500ms");
     });
 
-    it("should build one item per editable scalar field", async () => {
-      const items = await buildSettingsItems(settingsStub);
-      expect(items.map((i) => i.id)).toEqual([
+    it("should have one item per editable scalar field", () => {
+      const ids = Object.keys(SETTINGS_ITEMS);
+      expect(ids).toEqual([
         "reactToModelSelect",
         "autoloadOnMessage",
         "sortBy",
@@ -167,56 +164,96 @@ describe("CommandManager", () => {
         "showServerUrls",
       ]);
       // Booleans are displayed as on/off
-      expect(items[0].values).toEqual(["on", "off"]);
+      expect(SETTINGS_ITEMS["reactToModelSelect"].values).toEqual([
+        "on",
+        "off",
+      ]);
       // Timeouts cycle through formatted presets
-      expect(items[3].values).toEqual(["15s", "30s", "60s", "120s", "300s"]);
-      expect(items[4].values).toEqual(["500ms", "1s", "2s", "5s", "10s"]);
+      expect(SETTINGS_ITEMS["pollingTimeout"].values).toEqual([
+        "15s",
+        "30s",
+        "60s",
+        "120s",
+        "300s",
+      ]);
+      expect(SETTINGS_ITEMS["serverTimeout"].values).toEqual([
+        "500ms",
+        "1s",
+        "2s",
+        "5s",
+        "10s",
+      ]);
     });
 
-    it("should map changes to the right key and type", async () => {
-      const settingsStub = makeSettingsStub();
+    it("should format settings correctly from config", () => {
+      const config = {
+        reactToModelSelect: true,
+        autoloadOnMessage: false,
+        sortBy: "desc-name" as const,
+        pollingTimeout: 120000,
+        serverTimeout: 500,
+        showServerUrls: true,
+      };
 
-      await applySettingChange("reactToModelSelect", "on", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "reactToModelSelect",
-        true,
-      );
+      expect(SETTINGS_ITEMS["reactToModelSelect"].format(config)).toBe("on");
+      expect(SETTINGS_ITEMS["autoloadOnMessage"].format(config)).toBe("off");
+      expect(SETTINGS_ITEMS["sortBy"].format(config)).toBe("Descending (name)");
+      expect(SETTINGS_ITEMS["pollingTimeout"].format(config)).toBe("120s");
+      expect(SETTINGS_ITEMS["serverTimeout"].format(config)).toBe("500ms");
+      expect(SETTINGS_ITEMS["showServerUrls"].format(config)).toBe("on");
+    });
 
-      await applySettingChange("autoloadOnMessage", "off", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "autoloadOnMessage",
-        false,
+    it("should set config values correctly", () => {
+      const reactResult = SETTINGS_ITEMS["reactToModelSelect"].setConfig(
+        {},
+        "on",
       );
+      expect(reactResult).toEqual({
+        valid: true,
+        config: { reactToModelSelect: true },
+      });
 
-      await applySettingChange("sortBy", "desc-name", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "sortBy",
-        "desc-name",
+      const autoloadResult = SETTINGS_ITEMS["autoloadOnMessage"].setConfig(
+        {},
+        "off",
       );
+      expect(autoloadResult).toEqual({
+        valid: true,
+        config: { autoloadOnMessage: false },
+      });
 
-      await applySettingChange("pollingTimeout", "120s", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "pollingTimeout",
-        120000,
+      const sortByResult = SETTINGS_ITEMS["sortBy"].setConfig(
+        {},
+        "Descending (name)",
       );
+      expect(sortByResult).toEqual({
+        valid: true,
+        config: { sortBy: "desc-name" },
+      });
 
-      await applySettingChange("serverTimeout", "500ms", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "serverTimeout",
-        500,
+      const pollingResult = SETTINGS_ITEMS["pollingTimeout"].setConfig(
+        {},
+        "120s",
       );
+      expect(pollingResult).toEqual({
+        valid: true,
+        config: { pollingTimeout: 120000 },
+      });
 
-      await applySettingChange("showServerUrls", "on", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "showServerUrls",
-        true,
+      const serverResult = SETTINGS_ITEMS["serverTimeout"].setConfig(
+        {},
+        "500ms",
       );
+      expect(serverResult).toEqual({
+        valid: true,
+        config: { serverTimeout: 500 },
+      });
 
-      await applySettingChange("showServerUrls", "off", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "showServerUrls",
-        false,
-      );
+      const showResult = SETTINGS_ITEMS["showServerUrls"].setConfig({}, "on");
+      expect(showResult).toEqual({
+        valid: true,
+        config: { showServerUrls: true },
+      });
     });
   });
 

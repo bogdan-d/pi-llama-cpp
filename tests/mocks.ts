@@ -197,7 +197,7 @@ export const createMockCtx = (
     notify: vi.fn(),
     custom: vi.fn(),
     theme: {
-      fg: (color: string, text: string) => text,
+      fg: (_color: string, text: string) => text,
     },
   },
   modelRegistry: {
