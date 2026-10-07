@@ -1,9 +1,9 @@
 import type { ModelCost } from "@earendil-works/pi-ai";
-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
 import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
+import type { ChatModelConfig } from "../interfaces/chatModelConfig";
 import { Server } from "../server";
 
 /**
@@ -172,7 +172,7 @@ export abstract class BaseModel {
    *
    * @returns A Pi configuration object
    */
-  async toProviderConfig(): Promise<ProviderModelConfig> {
+  async toProviderConfig(): Promise<ChatModelConfig> {
     const override = this.server.findOverrideForModel(this.id) ?? {};
 
     // Merge the matched override's cost with zero defaults
@@ -188,7 +188,7 @@ export abstract class BaseModel {
     const contextWindow = await this.getContextSize();
     const maxTokens = this.getMaxTokens(contextWindow);
 
-    const response: ProviderModelConfig = {
+    const response: ChatModelConfig = {
       id: this.id,
       name: this.name,
       reasoning: this.reasoning,
