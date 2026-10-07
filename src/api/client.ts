@@ -53,14 +53,15 @@ export class ApiClient {
    * Makes a cached, deduplicated GET request to the llama-server.
    *
    * @param endpoint The endpoint path to fetch (e.g. "/health")
+   * @param timeout Maximum time (ms) to wait for the response
    * @returns The parsed JSON response from the server
    */
-  async get<T>(endpoint: string): Promise<T> {
+  async get<T>(endpoint: string, timeout?: number): Promise<T> {
     const cached = this.cacheGet<T>(endpoint);
     if (cached !== undefined) return cached;
 
     return this.dedupe(endpoint, async () => {
-      const data = await this.do_get<T>(endpoint);
+      const data = await this.do_get<T>(endpoint, timeout);
       this.cacheSet(endpoint, data);
       return data;
     });
@@ -165,6 +166,7 @@ export class ApiClient {
    * @param method The HTTP method
    * @param body The optional request body
    * @param parseJson Whether to parse the response as JSON (default: true)
+   * @param timeout Maximum time (ms) to wait for the response
    * @returns The parsed JSON response, or void if parseJson is false
    * @throws ApiError with status 401 when the server rejects the request
    *   due to authentication (invalid/missing API key).
@@ -174,10 +176,13 @@ export class ApiClient {
     method: "GET" | "POST",
     body?: Record<string, unknown>,
     parseJson = true,
+    timeout?: number,
   ): Promise<T | void> {
     const url = `${this.baseUrl}${endpoint}`;
+    const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
 
     const res = await fetch(url, {
+      signal,
       method,
       headers: {
         ...(method === "POST"
@@ -200,12 +205,19 @@ export class ApiClient {
    * This bypasses caching and deduplication.
    *
    * @param endpoint The endpoint path to fetch (e.g. "/health")
+   * @param timeout Maximum time (ms) to wait for the response
    * @returns The parsed JSON response from the server
    * @throws ApiError with status 401 when the server rejects the request
    *   due to authentication (invalid/missing API key).
    */
-  private async do_get<T>(endpoint: string): Promise<T> {
-    return this.do_request<T>(endpoint, "GET") as Promise<T>;
+  private async do_get<T>(endpoint: string, timeout?: number): Promise<T> {
+    return this.do_request<T>(
+      endpoint,
+      "GET",
+      undefined,
+      true,
+      timeout,
+    ) as Promise<T>;
   }
 
   /**
