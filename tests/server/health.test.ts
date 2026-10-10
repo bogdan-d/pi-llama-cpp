@@ -12,7 +12,7 @@ const stubFetch = (
 
 const okResponse = () => ({ ok: true, json: async () => ({ status: "ok" }) });
 
-const URL_ = "http://127.0.0.1:8080";
+const URL_ = "http://127.0.0.1:9931";
 
 afterEach(() => {
   vi.unstubAllGlobals();

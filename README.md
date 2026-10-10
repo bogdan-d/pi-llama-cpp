@@ -64,7 +64,7 @@ The extension resolves the llama.cpp server configuration using the following pr
 1. **Environment variable** — `LLAMA_SERVER_URL`
 2. **`llamaSettings`** — Main configuration format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
 3. **`llamaServerUrl`** — Legacy format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
-4. **Default** — `http://127.0.0.1:8080`
+4. **Default** — `http://127.0.0.1:9931`
 
 ### Server configuration
 
@@ -77,7 +77,7 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
 ```json
 {
   "llamaSettings": {
-    "servers": [{ "url": "http://127.0.0.1:8080" }]
+    "servers": [{ "url": "http://127.0.0.1:9931" }]
   }
 }
 ```
@@ -89,13 +89,13 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "id": "local",
         "name": "Local Server",
         "overrides": {}
       },
       {
-        "url": "http://10.0.0.5:8080",
+        "url": "http://10.0.0.5:9931",
         "name": "Remote Server"
       }
     ],
@@ -160,7 +160,7 @@ re-select it from the (new) provider afterwards.
 For a quick setup, you can use the `LLAMA_SERVER_URL` environment variable instead of the JSON config:
 
 ```bash
-export LLAMA_SERVER_URL="http://127.0.0.1:8080"
+export LLAMA_SERVER_URL="http://127.0.0.1:9931"
 ```
 
 This is equivalent to defining a single server in `llamaSettings.servers` with just a URL.
@@ -171,7 +171,7 @@ For a simpler setup, you can use the legacy `llamaServerUrl` key:
 
 ```json
 {
-  "llamaServerUrl": "http://127.0.0.1:8080"
+  "llamaServerUrl": "http://127.0.0.1:9931"
 }
 ```
 
@@ -187,9 +187,9 @@ To connect to multiple llama.cpp servers simultaneously:
 {
   "llamaSettings": {
     "servers": [
-      { "url": "http://127.0.0.1:8080" },
+      { "url": "http://127.0.0.1:9931" },
       { "url": "http://127.0.0.1:8081" },
-      { "url": "http://10.0.0.5:8080" }
+      { "url": "http://10.0.0.5:9931" }
     ]
   }
 }
@@ -198,10 +198,10 @@ To connect to multiple llama.cpp servers simultaneously:
 **Using the environment variable:**
 
 ```bash
-LLAMA_SERVER_URL="http://127.0.0.1:8080;http://127.0.0.1:8081;http://10.0.0.5:8080"
+LLAMA_SERVER_URL="http://127.0.0.1:9931;http://127.0.0.1:8081;http://10.0.0.5:9931"
 ```
 
-Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:8080)**) and its own set of models. The `/models` command lists all models from all servers, labeled with their server URL.
+Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:9931)**) and its own set of models. The `/models` command lists all models from all servers, labeled with their server URL.
 
 ### API Key
 
@@ -221,7 +221,7 @@ The `key` field supports several formats:
 
 ```json
 {
-  "llama-server=http://127.0.0.1:8080": {
+  "llama-server=http://127.0.0.1:9931": {
     "type": "api_key",
     "key": "sk-abc123"
   },
@@ -244,7 +244,7 @@ For env ref formats, you can also store the variable value alongside the key usi
 
 ```json
 {
-  "llama-server=http://127.0.0.1:8080": {
+  "llama-server=http://127.0.0.1:9931": {
     "type": "api_key",
     "key": "$MY_KEY",
     "env": {
@@ -381,7 +381,7 @@ Add overrides to your server configuration:
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "overrides": {
           "qwen-3.8-27b": {
             "cost": { "input": 0.42, "output": 3.0, "cacheRead": 0.085 }
@@ -449,7 +449,7 @@ Example:
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "overrides": {
           "llama-3": {
             "compat": {

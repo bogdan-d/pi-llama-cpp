@@ -53,7 +53,7 @@ describe("ServerManager", () => {
       toProviderConfig: vi.fn().mockResolvedValue({ id: "test-model" }),
     } as unknown as BaseModel;
     const server1 = createMockServer({
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: "http://127.0.0.1:9931",
       apiKey: "key-1",
       models: [mockModel],
     });
@@ -66,10 +66,10 @@ describe("ServerManager", () => {
 
     expect(mockPi.registerProvider).toHaveBeenCalledTimes(2);
     expect(mockPi.registerProvider).toHaveBeenCalledWith(
-      "llama-server=http://127.0.0.1:8080",
+      "llama-server=http://127.0.0.1:9931",
       {
-        name: "Llama.cpp (http://127.0.0.1:8080)",
-        baseUrl: "http://127.0.0.1:8080/v1",
+        name: "Llama.cpp (http://127.0.0.1:9931)",
+        baseUrl: "http://127.0.0.1:9931/v1",
         api: "openai-completions",
         apiKey: "key-1",
         models: [{ id: "test-model" }],
@@ -91,7 +91,7 @@ describe("ServerManager", () => {
     const mockModel1 = createMockModel("model-1");
     const mockModel2 = createMockModel("model-2");
     const server1 = createMockServer({
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: "http://127.0.0.1:9931",
       models: [mockModel1],
     });
     const server2 = createMockServer({
@@ -118,7 +118,7 @@ describe("ServerManager", () => {
       });
 
     it("should register servers added after the first scan", async () => {
-      const server1 = makeServer("http://127.0.0.1:8080", "model-1");
+      const server1 = makeServer("http://127.0.0.1:9931", "model-1");
       vi.mocked(settingsStub.resolveServers).mockResolvedValue([server1]);
       const manager = new ServerManager(settingsStub);
       await manager.update(mockPi as any);
@@ -143,7 +143,7 @@ describe("ServerManager", () => {
     it("should unregister and disconnect removed servers on the next scan", async () => {
       const disconnectKept = vi.fn();
       const disconnectRemoved = vi.fn();
-      const server1 = makeServer("http://127.0.0.1:8080", "model-1");
+      const server1 = makeServer("http://127.0.0.1:9931", "model-1");
       const server2 = makeServer("http://127.0.0.1:8081", "model-2");
       // createMockServer stubs initialize out (models are pre-seeded), so the
       // SSE managers never get wired; seed the slots ServerManager reaches
@@ -171,7 +171,7 @@ describe("ServerManager", () => {
 
     it("should unregister the old provider when a server URL changes", async () => {
       const manager = await createManager(
-        makeServer("http://127.0.0.1:8080", "model-1"),
+        makeServer("http://127.0.0.1:9931", "model-1"),
       );
 
       vi.mocked(settingsStub.resolveServers).mockResolvedValue([
@@ -180,7 +180,7 @@ describe("ServerManager", () => {
       await manager.update(mockPi as any);
 
       expect(mockPi.unregisterProvider).toHaveBeenCalledWith(
-        "llama-server=http://127.0.0.1:8080",
+        "llama-server=http://127.0.0.1:9931",
       );
       expect(mockPi.registerProvider).toHaveBeenCalledWith(
         "llama-server=http://127.0.0.1:9090",
@@ -193,14 +193,14 @@ describe("ServerManager", () => {
 
     it("should re-register same-id servers without unregistering (name edit)", async () => {
       const original = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         customId: "my-custom-id",
         customName: "A",
       });
       const manager = await createManager(original);
 
       const renamed = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         customId: "my-custom-id",
         customName: "B",
       });
@@ -216,8 +216,8 @@ describe("ServerManager", () => {
     });
 
     it("should collapse duplicate URLs into a single server", async () => {
-      const first = makeServer("http://127.0.0.1:8080", "model-1");
-      const duplicate = makeServer("http://127.0.0.1:8080", "model-1");
+      const first = makeServer("http://127.0.0.1:9931", "model-1");
+      const duplicate = makeServer("http://127.0.0.1:9931", "model-1");
       const manager = await createManager(first, duplicate);
 
       expect(manager.servers).toHaveLength(1);
@@ -227,7 +227,7 @@ describe("ServerManager", () => {
 
     it("should return undefined from getServer for a removed server's model", async () => {
       const manager = await createManager(
-        makeServer("http://127.0.0.1:8080", "model-1"),
+        makeServer("http://127.0.0.1:9931", "model-1"),
       );
 
       const live = (await manager.getAllModels())[0];
@@ -248,7 +248,7 @@ describe("ServerManager", () => {
       const mockModelZ = createMockModel("model-z");
       const manager = await createManager(
         createMockServer({
-          baseUrl: "http://127.0.0.1:8080",
+          baseUrl: "http://127.0.0.1:9931",
           models: [mockModelA, mockModelZ],
         }),
       );
@@ -267,7 +267,7 @@ describe("ServerManager", () => {
       const mockModelA = createMockModel("model-a");
       const manager = await createManager(
         createMockServer({
-          baseUrl: "http://127.0.0.1:8080",
+          baseUrl: "http://127.0.0.1:9931",
           models: [mockModelZ, mockModelA],
         }),
       );
@@ -286,7 +286,7 @@ describe("ServerManager", () => {
       const mockModelZ = createMockModel("model-z");
       const manager = await createManager(
         createMockServer({
-          baseUrl: "http://127.0.0.1:8080",
+          baseUrl: "http://127.0.0.1:9931",
           models: [mockModelA, mockModelZ],
         }),
       );
@@ -305,7 +305,7 @@ describe("ServerManager", () => {
       const mockModelA = createMockModel("alpha", { id: "model-a" });
       const manager = await createManager(
         createMockServer({
-          baseUrl: "http://127.0.0.1:8080",
+          baseUrl: "http://127.0.0.1:9931",
           models: [mockModelB, mockModelA],
         }),
       );
@@ -324,7 +324,7 @@ describe("ServerManager", () => {
       const mockModelB = createMockModel("zebra", { id: "model-b" });
       const manager = await createManager(
         createMockServer({
-          baseUrl: "http://127.0.0.1:8080",
+          baseUrl: "http://127.0.0.1:9931",
           models: [mockModelA, mockModelB],
         }),
       );

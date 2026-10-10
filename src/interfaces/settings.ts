@@ -93,7 +93,7 @@ export interface LlamaServer {
  *   "servers": [{
  *     "id": "server-a",
  *     "name": "Server A",
- *     "url": "http://localhost:8080"
+ *     "url": "http://localhost:9931"
  *   }],
  *   "reactToModelSelect": true
  *   "autoloadOnMessage": false

@@ -19,12 +19,12 @@ beforeEach(() => {
 
 describe("Server providerId", () => {
   it("should generate a unique provider ID from baseUrl", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.providerId).toBe("llama-server=http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.providerId).toBe("llama-server=http://127.0.0.1:9931");
   });
 
   it("should generate different IDs for different baseUrls", () => {
-    const server1 = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
+    const server1 = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
     const server2 = new Server(settings, { baseUrl: "http://127.0.0.1:8081" });
     expect(server1.providerId).not.toBe(server2.providerId);
   });
@@ -32,28 +32,28 @@ describe("Server providerId", () => {
 
 describe("Server providerName", () => {
   it("should generate a human-readable provider name", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.providerName).toBe("Llama.cpp (http://127.0.0.1:8080)");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.providerName).toBe("Llama.cpp (http://127.0.0.1:9931)");
   });
 });
 
 describe("Server apiBaseUrl", () => {
   it("should append the ENDPOINT_PREFIX to baseUrl", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.apiBaseUrl).toBe("http://127.0.0.1:8080/v1");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.apiBaseUrl).toBe("http://127.0.0.1:9931/v1");
   });
 
   it("should not double the prefix when baseUrl already ends with it", () => {
     const server = new Server(settings, {
-      baseUrl: "http://127.0.0.1:8080/v1",
+      baseUrl: "http://127.0.0.1:9931/v1",
     });
-    expect(server.apiBaseUrl).toBe("http://127.0.0.1:8080/v1");
+    expect(server.apiBaseUrl).toBe("http://127.0.0.1:9931/v1");
   });
 
   it("should keep baseUrl untouched for provider identity", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.baseUrl).toBe("http://127.0.0.1:8080");
-    expect(server.providerId).toBe("llama-server=http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.baseUrl).toBe("http://127.0.0.1:9931");
+    expect(server.providerId).toBe("llama-server=http://127.0.0.1:9931");
   });
 });
 
@@ -214,7 +214,7 @@ describe("Server postRequest", () => {
 
 describe("Server timeouts", async () => {
   it("should resolve timeouts from the injected settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
 
     expect(await server.getServerTimeout()).toBe(SERVER_TIMEOUT);
     expect(await server.getPollingTimeout()).toBe(POLLING_TIMEOUT);
@@ -227,7 +227,7 @@ describe("Server timeouts", async () => {
     });
 
     const server = new Server(settings, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: "http://127.0.0.1:9931",
       customId: "my-id",
       customName: "My Server",
     });
@@ -236,7 +236,7 @@ describe("Server timeouts", async () => {
   });
 
   it("should read timeouts live from settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
 
     vi.mocked(settings.resolveTimeouts).mockResolvedValue({
       pollingTimeout: 120000,

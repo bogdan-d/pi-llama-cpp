@@ -25,7 +25,7 @@ export class SSEClient {
   private _hasReceivedEvents: boolean = false;
 
   /**
-   * @param sseEndpoint - The full SSE endpoint URL (e.g., "http://127.0.0.1:8080/models/sse")
+   * @param sseEndpoint - The full SSE endpoint URL (e.g., "http://127.0.0.1:9931/models/sse")
    * @param apiKey - Optional API key for authenticated servers
    */
   constructor(

@@ -26,7 +26,7 @@ export const API_KEY_PLACEHOLDER = "sk-placeholder";
 /**
  * The default URL if the resolver couldn't find it
  */
-export const LLAMA_SERVER_URL = "http://127.0.0.1:8080";
+export const LLAMA_SERVER_URL = "http://127.0.0.1:9931";
 
 /**
  * Endpoint prefix of the OpenAI-compatible API exposed by llama-server.

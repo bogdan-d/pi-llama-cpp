@@ -8,7 +8,7 @@ import type { ModelOverride } from "./settings";
  */
 export interface ServerOptions {
   /**
-   * Base URL of the llama.cpp server (e.g. "http://127.0.0.1:8080").
+   * Base URL of the llama.cpp server (e.g. "http://127.0.0.1:9931").
    */
   baseUrl: string;
   /**

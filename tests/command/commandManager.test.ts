@@ -93,7 +93,7 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         models: [model1, model2],
       });
       const unloadSettings = makeSettingsStub({
@@ -123,7 +123,7 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         models: [model1, model2],
       });
       const infoSettings = makeSettingsStub({
@@ -477,7 +477,7 @@ describe("CommandManager", () => {
   });
 
   describe("/models interactive menu", () => {
-    const CHOICE = "model-a   [Server: http://127.0.0.1:8080]";
+    const CHOICE = "model-a   [Server: http://127.0.0.1:9931]";
 
     /**
      * Helper to create a CommandManager with mock servers and models.
@@ -670,7 +670,7 @@ describe("CommandManager", () => {
 
       const choices = vi.mocked(ctx.ui.select).mock.calls[0][1] as string[];
       expect(choices).toHaveLength(1);
-      expect(choices[0]).toContain("[Server: http://127.0.0.1:8080]");
+      expect(choices[0]).toContain("[Server: http://127.0.0.1:9931]");
     });
   });
 });

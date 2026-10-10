@@ -22,7 +22,7 @@ const createModel = (
       created: Date.now(),
       ...extra,
     } as any,
-    createMockServer({ baseUrl: "http://127.0.0.1:8080", ...serverOverrides }),
+    createMockServer({ baseUrl: "http://127.0.0.1:9931", ...serverOverrides }),
   );
 
 describe("LlamaSwapModel mode", () => {

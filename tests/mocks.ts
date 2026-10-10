@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
+import { defaultBaseUrl } from "./constants";
 import type { ApiClient } from "../src/api/client";
 import {
   API_KEY_PLACEHOLDER,
@@ -149,7 +150,7 @@ export const createMockServer = (
   const server = new Server(
     settings,
     {
-      baseUrl: baseUrl ?? "http://127.0.0.1:8080",
+      baseUrl: baseUrl ?? defaultBaseUrl(),
       customId,
       customName,
       overrides: modelOverrides,
@@ -174,7 +175,7 @@ export const createMockModel = (
     name,
     id: name,
     mode: Mode.ROUTER,
-    serverUrl: "http://127.0.0.1:8080",
+    serverUrl: defaultBaseUrl(),
     capabilities: ["text"] as ["text"],
     getStatus: vi.fn().mockResolvedValue(Status.LOADED),
     getContextSize: vi.fn().mockResolvedValue(4096),

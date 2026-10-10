@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { LLAMA_SERVER_URL } from "../../src/constants";
 import { UrlResolver } from "../../src/utils/urlResolver";
 
 function createResolver(
@@ -21,7 +22,7 @@ describe("UrlResolver", () => {
       );
 
       const result = await resolver.resolveUrls();
-      expect(result).toEqual(["http://127.0.0.1:8080"]);
+      expect(result).toEqual([LLAMA_SERVER_URL]);
     });
 
     it("prioritizes env variable over all config sources", async () => {
@@ -29,7 +30,7 @@ describe("UrlResolver", () => {
       const resolver = createResolver(
         () =>
           Promise.resolve({
-            servers: [{ url: "http://servers:8080" }],
+            servers: [{ url: "http://servers:9090" }],
           }),
         () => Promise.resolve({ llamaServerUrl: "http://legacy:7070" }),
       );
@@ -42,13 +43,13 @@ describe("UrlResolver", () => {
       const resolver = createResolver(
         () =>
           Promise.resolve({
-            servers: [{ url: "http://servers:8080" }],
+            servers: [{ url: "http://servers:9090" }],
           }),
         () => Promise.resolve({ llamaServerUrl: "http://legacy:7070" }),
       );
 
       const result = await resolver.resolveUrls();
-      expect(result).toEqual(["http://servers:8080"]);
+      expect(result).toEqual(["http://servers:9090"]);
     });
 
     it("falls back to legacy when servers is empty", async () => {
@@ -68,13 +69,13 @@ describe("UrlResolver", () => {
       );
 
       const result = await resolver.resolveUrls();
-      expect(result).toEqual(["http://127.0.0.1:8080"]);
+      expect(result).toEqual([LLAMA_SERVER_URL]);
     });
   });
 
   describe("warnings", () => {
     it("collects warnings for invalid env URLs", async () => {
-      process.env.LLAMA_SERVER_URL = "invalid-url;http://good:8080";
+      process.env.LLAMA_SERVER_URL = "invalid-url;http://good:9931";
       const resolver = createResolver(
         () => Promise.resolve({}),
         () => Promise.resolve({}),
@@ -90,7 +91,7 @@ describe("UrlResolver", () => {
       const resolver = createResolver(
         () =>
           Promise.resolve({
-            servers: [{ url: "bad-url" }, { url: "http://good:8080" }],
+            servers: [{ url: "bad-url" }, { url: "http://good:9931" }],
           }),
         () => Promise.resolve({}),
       );
@@ -102,7 +103,7 @@ describe("UrlResolver", () => {
     });
 
     it("clears warnings after takeWarnings()", async () => {
-      process.env.LLAMA_SERVER_URL = "bad;http://good:8080";
+      process.env.LLAMA_SERVER_URL = "bad;http://good:9931";
       const resolver = createResolver(
         () => Promise.resolve({}),
         () => Promise.resolve({}),

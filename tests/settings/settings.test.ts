@@ -7,6 +7,7 @@ import {
   PROVIDER_PREFIX,
   SERVER_TIMEOUT,
 } from "../../src/constants";
+import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
 import {
   createSettingsManager,
@@ -63,7 +64,7 @@ describe("API key resolution", () => {
   it("should return placeholder when credential is not found", () => {
     mockReadStoredCredential.mockReturnValue(undefined);
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toEqual(API_KEY_PLACEHOLDER);
   });
@@ -71,7 +72,7 @@ describe("API key resolution", () => {
   it("should return placeholder when apiKey is missing from credential", () => {
     mockReadStoredCredential.mockReturnValue({});
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toEqual(API_KEY_PLACEHOLDER);
   });
@@ -79,7 +80,7 @@ describe("API key resolution", () => {
   it("should return the key when present in credential", () => {
     mockReadStoredCredential.mockReturnValue({ key: "test-api-key" });
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toEqual("test-api-key");
   });
@@ -87,10 +88,10 @@ describe("API key resolution", () => {
   it("should call readStoredCredential with the provider ID", () => {
     mockReadStoredCredential.mockReturnValue({ key: "test-key" });
 
-    manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(mockReadStoredCredential).toHaveBeenCalledWith(
-      "llama-server=http://127.0.0.1:8080",
+      `llama-server=${defaultBaseUrl()}`,
     );
   });
 
@@ -98,7 +99,7 @@ describe("API key resolution", () => {
     mockReadStoredCredential.mockReturnValue({ key: "$MY_API_KEY" });
     process.env.MY_API_KEY = "env-resolved-key";
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe("env-resolved-key");
     delete process.env.MY_API_KEY;
@@ -108,7 +109,7 @@ describe("API key resolution", () => {
     mockReadStoredCredential.mockReturnValue({ key: "${MY_API_KEY}" });
     process.env.MY_API_KEY = "braced-resolved-key";
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe("braced-resolved-key");
     delete process.env.MY_API_KEY;
@@ -121,7 +122,7 @@ describe("API key resolution", () => {
     });
     process.env.MY_KEY = "process-env-value";
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe("credential-env-value");
     delete process.env.MY_KEY;
@@ -131,7 +132,7 @@ describe("API key resolution", () => {
     mockReadStoredCredential.mockReturnValue({ key: "$UNSET_VAR" });
     delete process.env.UNSET_VAR;
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe(API_KEY_PLACEHOLDER);
   });
@@ -142,7 +143,7 @@ describe("API key resolution", () => {
   it("should escape $$ as literal $", () => {
     mockReadStoredCredential.mockReturnValue({ key: "$$LITERAL" });
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe("$LITERAL");
   });
@@ -150,7 +151,7 @@ describe("API key resolution", () => {
   it("should escape $! as literal !", () => {
     mockReadStoredCredential.mockReturnValue({ key: "$!LITERAL" });
 
-    const result = manager.resolveApiKey("llama-server=http://127.0.0.1:8080");
+    const result = manager.resolveApiKey(`llama-server=${defaultBaseUrl()}`);
 
     expect(result).toBe("!LITERAL");
   });
@@ -159,7 +160,7 @@ describe("API key resolution", () => {
 describe("Server with custom id", () => {
   it("should use custom id as providerId when provided", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
 
@@ -168,17 +169,15 @@ describe("Server with custom id", () => {
 
   it("should fall back to URL-based providerId when no custom id", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
     });
 
-    expect(server.providerId).toEqual(
-      `${PROVIDER_PREFIX}=http://127.0.0.1:8080`,
-    );
+    expect(server.providerId).toEqual(`${PROVIDER_PREFIX}=${defaultBaseUrl()}`);
   });
 
   it("should try custom id first in getApiKey(), then fall back to URL-based", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
 
@@ -196,7 +195,7 @@ describe("Server with custom id", () => {
     expect(mockReadStoredCredential).toHaveBeenNthCalledWith(1, "my-custom-id");
     expect(mockReadStoredCredential).toHaveBeenNthCalledWith(
       2,
-      `${PROVIDER_PREFIX}=http://127.0.0.1:8080`,
+      `${PROVIDER_PREFIX}=${defaultBaseUrl()}`,
     );
   });
 
@@ -204,7 +203,7 @@ describe("Server with custom id", () => {
     mockReadStoredCredential.mockReturnValue({ key: "custom-key" });
 
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
 
@@ -218,7 +217,7 @@ describe("Server with custom id", () => {
 describe("Server with custom name", () => {
   it("should use custom name as suffix in providerName", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       customName: "Remote Server",
     });
 
@@ -227,15 +226,15 @@ describe("Server with custom name", () => {
 
   it("should fall back to URL-based name when no custom name", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
     });
 
-    expect(server.providerName).toEqual(`Llama.cpp (http://127.0.0.1:8080)`);
+    expect(server.providerName).toEqual(`Llama.cpp (${defaultBaseUrl()})`);
   });
 
   it("should use custom name even with custom id", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
       customName: "Remote Server",
     });
@@ -368,7 +367,7 @@ describe("resolveServers", () => {
     mockGetProjectSettings.mockReturnValue({
       llamaSettings: {
         servers: [
-          { url: "http://custom:8080", id: "my-server", name: "Custom" },
+          { url: "http://custom:9090", id: "my-server", name: "Custom" },
         ],
       },
     });
@@ -376,7 +375,7 @@ describe("resolveServers", () => {
     const result = await manager.resolveServers();
 
     expect(result).toHaveLength(1);
-    expect(result[0].baseUrl).toBe("http://custom:8080");
+    expect(result[0].baseUrl).toBe("http://custom:9090");
     expect(result[0].providerId).toBe("my-server");
   });
 
@@ -399,16 +398,14 @@ describe("resolveServers", () => {
   it("should apply id/name from llamaSettings.servers as overrides", async () => {
     mockGetProjectSettings.mockReturnValue({
       llamaSettings: {
-        servers: [
-          { url: "http://127.0.0.1:8080", id: "custom-id", name: "Custom" },
-        ],
+        servers: [{ url: defaultBaseUrl(), id: "custom-id", name: "Custom" }],
       },
     });
 
     const result = await manager.resolveServers();
 
     expect(result).toHaveLength(1);
-    expect(result[0].baseUrl).toBe("http://127.0.0.1:8080");
+    expect(result[0].baseUrl).toBe(defaultBaseUrl());
     expect(result[0].providerId).toBe("custom-id");
     expect(result[0].providerName).toBe(`Llama.cpp (Custom)`);
   });
@@ -416,22 +413,22 @@ describe("resolveServers", () => {
   it("should handle multiple URLs with partial id/name overrides", async () => {
     mockGetProjectSettings.mockReturnValue({
       llamaSettings: {
-        servers: [{ url: "http://first:8080", id: "first-server" }],
+        servers: [{ url: "http://first:9090", id: "first-server" }],
       },
     });
-    process.env.LLAMA_SERVER_URL = "http://first:8080;http://second:9090";
+    process.env.LLAMA_SERVER_URL = "http://first:9090;http://second:9091";
 
     const result = await manager.resolveServers();
 
     expect(result).toHaveLength(2);
-    expect(result[0].baseUrl).toBe("http://first:8080");
+    expect(result[0].baseUrl).toBe("http://first:9090");
     expect(result[0].providerId).toBe("first-server");
-    expect(result[1].baseUrl).toBe("http://second:9090");
-    expect(result[1].providerId).toBe(`${PROVIDER_PREFIX}=http://second:9090`);
+    expect(result[1].baseUrl).toBe("http://second:9091");
+    expect(result[1].providerId).toBe(`${PROVIDER_PREFIX}=http://second:9091`);
   });
 
   it("should prioritize env variable over global servers", async () => {
-    process.env.LLAMA_SERVER_URL = "http://env:8080";
+    process.env.LLAMA_SERVER_URL = "http://env:9090";
     mockGetGlobalSettings.mockReturnValue({
       llamaSettings: {
         servers: [{ url: "http://global:9090" }],
@@ -442,7 +439,7 @@ describe("resolveServers", () => {
 
     // env variable takes precedence via resolveUrls
     expect(result).toHaveLength(1);
-    expect(result[0].baseUrl).toBe("http://env:8080");
+    expect(result[0].baseUrl).toBe("http://env:9090");
   });
 });
 
@@ -749,7 +746,7 @@ describe("resolveServerOverrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://127.0.0.1:8080",
+            url: defaultBaseUrl(),
             overrides: {
               "llama-3-8b": { cost: { input: 0.2, output: 0.6 } },
               "llama-3-70b": {
@@ -766,9 +763,7 @@ describe("resolveServerOverrides", () => {
       },
     });
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({
       "llama-3-8b": { cost: { input: 0.2, output: 0.6 } },
@@ -786,13 +781,11 @@ describe("resolveServerOverrides", () => {
   it("should return empty object for a server without overrides", async () => {
     mockGetProjectSettings.mockReturnValue({
       llamaSettings: {
-        servers: [{ url: "http://127.0.0.1:8080" }],
+        servers: [{ url: defaultBaseUrl() }],
       },
     });
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({});
   });
@@ -804,9 +797,7 @@ describe("resolveServerOverrides", () => {
       },
     });
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({});
   });
@@ -816,14 +807,14 @@ describe("resolveServerOverrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://global:8080",
+            url: "http://global:9090",
             overrides: { "model-a": { cost: { input: 0.5 } } },
           },
         ],
       },
     });
 
-    const result = await manager.resolveServerOverrides("http://global:8080");
+    const result = await manager.resolveServerOverrides("http://global:9090");
 
     expect(result).toEqual({ "model-a": { cost: { input: 0.5 } } });
   });
@@ -833,7 +824,7 @@ describe("resolveServerOverrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://shared:8080",
+            url: "http://shared:9090",
             overrides: { "model-b": { cost: { input: 0.1, output: 0.2 } } },
           },
         ],
@@ -843,14 +834,14 @@ describe("resolveServerOverrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://shared:8080",
+            url: "http://shared:9090",
             overrides: { "model-b": { cost: { input: 0.5, output: 0.5 } } },
           },
         ],
       },
     });
 
-    const result = await manager.resolveServerOverrides("http://shared:8080");
+    const result = await manager.resolveServerOverrides("http://shared:9090");
 
     expect(result).toEqual({
       "model-b": { cost: { input: 0.1, output: 0.2 } },
@@ -862,9 +853,7 @@ describe("resolveServerOverrides", () => {
       llamaSettings: { servers: [] },
     });
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({});
   });
@@ -872,9 +861,7 @@ describe("resolveServerOverrides", () => {
   it("should return empty object when llamaSettings is missing", async () => {
     mockGetProjectSettings.mockReturnValue({});
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({});
   });
@@ -884,16 +871,14 @@ describe("resolveServerOverrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://127.0.0.1:8080",
+            url: defaultBaseUrl(),
             overrides: { "partial-model": { cost: { input: 0.1 } } },
           },
         ],
       },
     });
 
-    const result = await manager.resolveServerOverrides(
-      "http://127.0.0.1:8080",
-    );
+    const result = await manager.resolveServerOverrides(defaultBaseUrl());
 
     expect(result).toEqual({ "partial-model": { cost: { input: 0.1 } } });
   });
@@ -902,7 +887,7 @@ describe("resolveServerOverrides", () => {
 describe("Server with overrides", () => {
   it("should store and expose resolved overrides", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
       overrides: {
         "model-a": { cost: { input: 0.2, output: 0.6 } },
         "model-b": { cost: { input: 0.1, output: 0.3, cacheRead: 0.01 } },
@@ -919,7 +904,7 @@ describe("Server with overrides", () => {
 
   it("should return undefined for findOverrideForModel when no overrides are provided", () => {
     const server = new Server(manager, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: defaultBaseUrl(),
     });
 
     expect(server.findOverrideForModel("any-model")).toBeUndefined();
@@ -950,7 +935,7 @@ describe("resolveServers passes overrides", () => {
       llamaSettings: {
         servers: [
           {
-            url: "http://overrides-server:8080",
+            url: "http://overrides-server:9090",
             overrides: { "model-x": { cost: { input: 0.5, output: 1.0 } } },
           },
           {
@@ -973,7 +958,7 @@ describe("resolveServers passes overrides", () => {
 describe("Server.findOverrideForModel", () => {
   function createServer(overrides: Record<string, ModelOverride>): Server {
     return new Server(createSettingsManager() as any, {
-      baseUrl: "http://127.0.0.1:8080",
+      baseUrl: "http://127.0.0.1:9931",
       overrides,
     });
   }
