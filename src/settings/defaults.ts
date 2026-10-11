@@ -1,5 +1,6 @@
 import type { SettingsItem } from "./base";
 import { AutoloadOnMessageSettingsItem } from "./items/autoload-on-message";
+import { EnableSSESettingsItem } from "./items/enable-sse";
 import { PollingIntervalSettingsItem } from "./items/polling-interval";
 import { PollingTimeoutSettingsItem } from "./items/polling-timeout";
 import { ReactToModelSelectSettingsItem } from "./items/react-to-model-select";
@@ -19,4 +20,5 @@ export const SETTINGS_ITEMS: Record<string, SettingsItem<unknown>> = {
   pollingTimeout: new PollingTimeoutSettingsItem(),
   serverTimeout: new ServerTimeoutSettingsItem(),
   showServerUrls: new ShowServerUrlsSettingsItem(),
+  enableSSE: new EnableSSESettingsItem(),
 };

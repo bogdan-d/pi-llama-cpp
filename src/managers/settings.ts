@@ -248,6 +248,15 @@ export class LlamaSettingsManager {
   }
 
   /**
+   * Resolves whether SSE is enabled for model loading.
+   *
+   * @returns `true` if SSE should be used
+   */
+  async resolveEnableSSE(): Promise<boolean> {
+    return (await this.getLlamaSettings()).enableSSE ?? true;
+  }
+
+  /**
    * Persists multiple llamaSettings fields to settings and reloads the
    * in-memory settings so resolvers see the change immediately.
    * Writes to project `.pi/settings.json` if it exists, otherwise global.

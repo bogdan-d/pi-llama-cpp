@@ -37,10 +37,12 @@ export class SSEManager {
   /**
    * Probes the SSE endpoint to check if it's supported.
    * Result is cached for the lifetime of the manager.
+   * Respects the `enableSSE` setting to force polling fallback.
    *
    * @returns true if SSE is supported
    */
   async probeSSE(): Promise<boolean> {
+    if (!(await this.server.resolveEnableSSE())) return false;
     if (this.sseSupported !== null) return this.sseSupported;
 
     try {

@@ -138,6 +138,11 @@ export interface LlamaSettings {
    */
   sortBy?: SortBy;
   /**
+   * Whether to use SSE for model loading.
+   * @default true
+   */
+  enableSSE?: boolean;
+  /**
    * Whether to show the `[Server: <url>]` suffix in the /models model list.
    * When `false`, only model names are shown without server annotations.
    * @default true

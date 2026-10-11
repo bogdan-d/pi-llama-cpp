@@ -163,6 +163,7 @@ describe("CommandManager", () => {
         "pollingTimeout",
         "serverTimeout",
         "showServerUrls",
+        "enableSSE",
       ]);
       // Booleans are displayed as on/off
       expect(SETTINGS_ITEMS["reactToModelSelect"].values).toEqual([

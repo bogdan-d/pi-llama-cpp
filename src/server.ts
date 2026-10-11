@@ -101,6 +101,14 @@ export class Server {
   }
 
   /**
+   * Resolves whether SSE is enabled for model loading.
+   * Resolved live from the injected settings manager.
+   */
+  async resolveEnableSSE(): Promise<boolean> {
+    return this.settings.resolveEnableSSE();
+  }
+
+  /**
    * Provides access to the SSE manager for direct subscriptions.
    */
   get sseManager(): SSEManager {

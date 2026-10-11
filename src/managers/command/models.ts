@@ -83,8 +83,9 @@ export class ModelsMenu {
       // Subscribe to progress events; skip when the server is gone
       // (removed/edited away mid-load → getServer returns undefined)
       const server = this.serverManager.getServer(model);
-      const cleanupProgress =
-        server?.sseManager.subscribeToProgress(
+      let cleanupProgress = () => {};
+      if (server && (await server.sseManager.probeSSE())) {
+        cleanupProgress = server.sseManager.subscribeToProgress(
           model.id,
           (percentage, stage) => {
             const stageText = stage ? ` (${stage})` : "";
@@ -93,7 +94,8 @@ export class ModelsMenu {
               "info",
             );
           },
-        ) ?? (() => {});
+        );
+      }
 
       const onSuccess = async () => {
         const { serverId } = model;

@@ -137,7 +137,7 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 
 #### In-session settings menu
 
-Run `/models settings` to edit the scalar settings above without hand-editing JSON. Changes are written to the **project** `.pi/settings.json` if it exists, otherwise to **global** `~/.pi/agent/settings.json`. Boolean and sort changes apply immediately; timeout changes apply on the next model load. The `servers` list is edited with `/models servers` (see below), and per-server model overrides with `/models overrides` (see [Model Overrides](#model-overrides)).
+Run `/models settings` to edit the scalar settings above without hand-editing JSON. Changes are written to the **project** `.pi/settings.json` if it exists, otherwise to **global** `~/.pi/agent/settings.json`. Boolean and sort changes apply immediately; timeout changes apply on the next model load. The `servers` list is edited with `/models servers` (see below), and per-server model overrides with `/models overrides` (see [Model Overrides](#model-overrides)). Press **r** on any setting to reset it to its default value.
 
 #### Server list editor
 
