@@ -250,3 +250,60 @@ describe("RouterModel mode", () => {
     expect(model.mode).toBe(Mode.ROUTER);
   });
 });
+
+describe("RouterModel unload", () => {
+  it("should call postRequest then poll until UNLOADED", async () => {
+    const mockServer = createMockServer();
+    const model = new RouterModel(createModel(), mockServer);
+
+    // postRequest for unload
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus: fetchModelProps returns UNLOADED shape
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 400, message: "model is not loaded" },
+    });
+
+    await model.unload();
+
+    expect(mockRpc).toHaveBeenNthCalledWith(1, "/models/unload", {
+      model: "test-model",
+    });
+  });
+
+  it("should throw on timeout before reaching UNLOADED", async () => {
+    const mockServer = createMockServer({
+      pollingTimeout: 100,
+    });
+    const model = new RouterModel(createModel(), mockServer);
+
+    // postRequest
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus keeps returning LOADING (error.code === 503)
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 503 },
+    });
+
+    await expect(model.unload()).rejects.toThrow("timed out");
+  });
+
+  it("should resolve when status reaches UNLOADED", async () => {
+    const mockServer = createMockServer();
+    const model = new RouterModel(createModel(), mockServer);
+
+    // postRequest
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus: first call returns LOADING, second returns UNLOADED
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 503 },
+    });
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 400, message: "model is not loaded" },
+    });
+
+    await expect(model.unload()).resolves.toBeUndefined();
+  });
+});

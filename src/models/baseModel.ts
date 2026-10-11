@@ -273,10 +273,12 @@ export abstract class BaseModel {
   }
 
   /**
-   * Unloads the model from llama-server
+   * Unloads the model from llama-server and waits until the status
+   * reaches `UNLOADED`.
    */
   async unload(): Promise<void> {
     await this.server.postRequest("unload", this.id);
+    await this.pollStatus(Status.UNLOADED);
   }
 
   /**

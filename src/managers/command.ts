@@ -114,6 +114,7 @@ export class CommandManager {
     }
 
     if (args === "unload") {
+      ctx.ui.notify(`Unloading ${PROVIDER_NAME} models...`, "info");
       const models = await this.serverManager.getAllModels();
       await Promise.all(models.map((model) => model.unload()));
       ctx.ui.notify(`Unloaded all ${PROVIDER_NAME} models`, "info");

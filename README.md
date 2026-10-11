@@ -338,6 +338,8 @@ When browsing models via the `/models` command, you can:
 
 > **Note:** In single-model and legacy-model mode, **Unload** is not available, since there is only one model on the server.
 
+> **Note:** Unload operations display progress notifications (similar to loading) so you can track the operation in real time.
+
 ### Thinking Budgets
 
 The extension supports configurable **thinking budgets** that control how many tokens the model allocates to its reasoning/thinking process.
