@@ -140,6 +140,7 @@ export class Server {
     this.apiClient =
       this.deps.createApiClient?.(this.apiKey) ??
       new ApiClient(this.baseUrl, this.apiKey);
+    this.sse?.disconnect();
     this.sse = this.deps.createSSEManager?.(this) ?? new SSEManager(this);
     const { data } = await this.fetchModels();
     const mode = await this.detectServerMode(data);
