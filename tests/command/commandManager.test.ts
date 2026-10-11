@@ -371,7 +371,7 @@ describe("CommandManager", () => {
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
 
       // Add a server through the wizard (URL → ID → name) →
-      // setLlamaSetting("servers", …) persists only after the final step
+      // setLlamaSettings({ servers: … }) persists only after the final step
       editor.handleInput("a");
       expect(editor.render(80).join("\n")).toContain("Add server · 1/3");
       for (const ch of "http://new:2") editor.handleInput(ch);
@@ -382,10 +382,9 @@ describe("CommandManager", () => {
       editor.handleInput(ENTER); // skip optional name → persist
       // Wait for async persist and rebuild
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
-        { url: "http://seed:1" },
-        { url: "http://new:2" },
-      ]);
+      expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
+        servers: [{ url: "http://seed:1" }, { url: "http://new:2" }],
+      });
 
       // Esc closes the editor
       editor.handleInput(ESC);
@@ -421,7 +420,7 @@ describe("CommandManager", () => {
       editor.handleInput(ESC);
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+      expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
       // Back to the list view
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
     });
@@ -464,15 +463,15 @@ describe("CommandManager", () => {
       // Esc keeps the server
       editor.handleInput(ESC);
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+      expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
 
       // Re-open and confirm the default "Delete" selection
       editor.handleInput("d");
       editor.handleInput(ENTER);
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
-        { url: "http://seed:1" },
-      ]);
+      expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
+        servers: [{ url: "http://seed:1" }],
+      });
     });
   });
 

@@ -540,7 +540,7 @@ describe("Thinking config resolution", () => {
   });
 });
 
-describe("setLlamaSetting", () => {
+describe("setLlamaSettings", () => {
   const mockGetAgentDir = vi.mocked(getAgentDir);
   const mockGetProjectSettings = vi.mocked(
     mockSettingsManager.getProjectSettings,
@@ -577,7 +577,7 @@ describe("setLlamaSetting", () => {
     mockAccess.mockResolvedValue(undefined);
     mockReadFile.mockResolvedValue("{}");
 
-    await manager.setLlamaSetting("sortBy", "desc");
+    await manager.setLlamaSettings({ sortBy: "desc" });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
       `${PROJECT_SETTINGS_PATH}.tmp`,
@@ -594,7 +594,7 @@ describe("setLlamaSetting", () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockReadFile.mockResolvedValue("{}");
 
-    await manager.setLlamaSetting("sortBy", "desc");
+    await manager.setLlamaSettings({ sortBy: "desc" });
 
     expect(mockWriteFile).toHaveBeenCalledWith(
       `${GLOBAL_SETTINGS_PATH}.tmp`,
@@ -604,32 +604,6 @@ describe("setLlamaSetting", () => {
     expect(mockRename).toHaveBeenCalledWith(
       `${GLOBAL_SETTINGS_PATH}.tmp`,
       GLOBAL_SETTINGS_PATH,
-    );
-  });
-
-  it("should always write to global when scope is explicitly 'global'", async () => {
-    mockAccess.mockResolvedValue(undefined); // project exists but we override
-    mockReadFile.mockResolvedValue("{}");
-
-    await manager.setLlamaSetting("sortBy", "desc", "global");
-
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      `${GLOBAL_SETTINGS_PATH}.tmp`,
-      expect.any(String),
-      "utf-8",
-    );
-  });
-
-  it("should always write to project when scope is explicitly 'project'", async () => {
-    mockAccess.mockRejectedValue(new Error("ENOENT")); // project doesn't exist but we override
-    mockReadFile.mockResolvedValue("{}");
-
-    await manager.setLlamaSetting("sortBy", "desc", "project");
-
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      `${PROJECT_SETTINGS_PATH}.tmp`,
-      expect.any(String),
-      "utf-8",
     );
   });
 
@@ -643,7 +617,7 @@ describe("setLlamaSetting", () => {
       ),
     );
 
-    await manager.setLlamaSetting("sortBy", "desc");
+    await manager.setLlamaSettings({ sortBy: "desc" });
 
     expect(mockWriteFile).toHaveBeenCalledTimes(1);
     const [tmpPath, written, encoding] = mockWriteFile.mock.calls[0];
@@ -670,7 +644,7 @@ describe("setLlamaSetting", () => {
       });
     });
 
-    await manager.setLlamaSetting("sortBy", "desc");
+    await manager.setLlamaSettings({ sortBy: "desc" });
 
     expect(await manager.resolveSortBy()).toBe("desc");
   });
@@ -679,7 +653,7 @@ describe("setLlamaSetting", () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockWriteFile.mockRejectedValue(new Error("ENOSPC: simulated"));
 
-    await expect(manager.setLlamaSetting("sortBy", "desc")).rejects.toThrow(
+    await expect(manager.setLlamaSettings({ sortBy: "desc" })).rejects.toThrow(
       "ENOSPC",
     );
     expect(mockReload).not.toHaveBeenCalled();
@@ -689,7 +663,7 @@ describe("setLlamaSetting", () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
     mockReadFile.mockResolvedValue("{ broken");
 
-    await expect(manager.setLlamaSetting("sortBy", "desc")).rejects.toThrow(
+    await expect(manager.setLlamaSettings({ sortBy: "desc" })).rejects.toThrow(
       /Cannot parse/,
     );
     expect(mockWriteFile).not.toHaveBeenCalled();
@@ -699,14 +673,14 @@ describe("setLlamaSetting", () => {
   it("should persist booleans and numbers with type fidelity", async () => {
     mockAccess.mockRejectedValue(new Error("ENOENT"));
 
-    await manager.setLlamaSetting("reactToModelSelect", false);
+    await manager.setLlamaSettings({ reactToModelSelect: false });
 
     const [, firstWrite] = mockWriteFile.mock.calls[0];
     expect(JSON.parse(firstWrite as string)).toEqual({
       llamaSettings: { reactToModelSelect: false },
     });
 
-    await manager.setLlamaSetting("pollingTimeout", 120000);
+    await manager.setLlamaSettings({ pollingTimeout: 120000 });
 
     const [, secondWrite] = mockWriteFile.mock.calls[1];
     expect(JSON.parse(secondWrite as string)).toEqual({

@@ -115,6 +115,7 @@ export class SettingsEditor implements Component, Focusable {
         return;
       }
       await this.options.settings.setLlamaSettings(result.config!);
+      // Re-read to sync with the file (external edits may have landed).
       this.currentConfig = await this.options.settings.getLlamaSettings();
       this.settingsList?.updateValue(id, item.format(this.currentConfig));
       this.options.tui.requestRender();

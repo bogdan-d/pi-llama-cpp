@@ -37,7 +37,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
   /**
    * Opens the editor in a modal `ui.custom` dialog seeded with the
    * current `llamaSettings.servers` and resolves when the user closes
-   * it (Esc). Writes go through `settings.setLlamaSetting()`; write
+   * it (Esc). Writes go through `settings.setLlamaSettings()`; write
    * errors are notified via `ui` and the editor stays open with the
    * pre-mutation list.
    */
@@ -55,7 +55,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
           theme,
           keybindings,
           servers,
-          persist: (next) => settings.setLlamaSetting("servers", next),
+          persist: (next) => settings.setLlamaSettings({ servers: next }),
           done: () => done(undefined),
           onError: (message) => ui.notify(message, "error"),
           serverTimeout,

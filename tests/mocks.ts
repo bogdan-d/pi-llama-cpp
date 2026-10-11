@@ -49,7 +49,7 @@ export const makeSettingsStub = (
     resolveThinkingLevel: vi.fn(() => undefined),
     resolveThinkingBudgets: vi.fn(() => ({ ...THINKING_BUDGETS })),
     takeWarnings: vi.fn((): string[] => []),
-    setLlamaSetting: vi.fn(() => Promise.resolve()),
+    setLlamaSettings: vi.fn(() => Promise.resolve()),
     ...overrides,
   }) as unknown as LlamaSettingsManager;
 
