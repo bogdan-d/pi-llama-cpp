@@ -159,6 +159,7 @@ describe("CommandManager", () => {
         "reactToModelSelect",
         "autoloadOnMessage",
         "sortBy",
+        "pollingInterval",
         "pollingTimeout",
         "serverTimeout",
         "showServerUrls",

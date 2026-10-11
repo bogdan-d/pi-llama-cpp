@@ -222,6 +222,7 @@ describe("Server timeouts", async () => {
 
   it("should return resolved custom values", async () => {
     vi.mocked(settings.resolveTimeouts).mockResolvedValue({
+      pollingInterval: 500,
       pollingTimeout: 90000,
       serverTimeout: 2000,
     });
@@ -239,12 +240,14 @@ describe("Server timeouts", async () => {
     const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
 
     vi.mocked(settings.resolveTimeouts).mockResolvedValue({
+      pollingInterval: 500,
       pollingTimeout: 120000,
       serverTimeout: 3000,
     });
     expect(await server.getPollingTimeout()).toBe(120000);
 
     vi.mocked(settings.resolveTimeouts).mockResolvedValue({
+      pollingInterval: 500,
       pollingTimeout: 90000,
       serverTimeout: 2000,
     });

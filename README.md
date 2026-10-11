@@ -127,9 +127,11 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 | `reactToModelSelect` | boolean | `true`  | Load the model when you switch via Pi's model picker.         |
 | `autoloadOnMessage`  | boolean | `false` | Automatically load an unloaded model before sending a message |
 | `sortBy`             | string  | `"asc"` | Sort order for models (see below)                             |
+| `pollingInterval`    | number  | `500`   | Time (ms) between status checks during model load/unload      |
 | `pollingTimeout`     | number  | `60000` | Max time (ms) to wait for model loading before giving up      |
 | `serverTimeout`      | number  | `1000`  | Timeout (ms) for server health checks and SSE probes          |
 | `showServerUrls`     | boolean | `true`  | Show `[Server: <url>]` suffix in the /models model list       |
+| `enableSSE`          | boolean | `true`  | Use SSE for model loading progress (falls back to polling)    |
 
 > **Note:** `serverTimeout` controls individual HTTP request timeouts (health checks, SSE probe). `pollingTimeout` controls the total wait time for a model to finish loading. Increase `serverTimeout` for slow/high-latency servers, and `pollingTimeout` for large models or slow hardware.
 
@@ -503,7 +505,7 @@ You can disable this behavior by setting `reactToModelSelect` to `false` in `lla
 
 ### Loading Models
 
-When you trigger a load, switch, or retry action, the extension uses SSE (Server-Sent Events) to receive real-time progress updates from the server. If SSE is not available, it falls back to polling.
+When you trigger a load, switch, or retry action, the extension uses SSE (Server-Sent Events) to receive real-time progress updates from the server. If SSE is not available, it falls back to polling (every **500 ms**, configurable via `pollingInterval`).
 
 If loading takes longer than **60 seconds** (configurable via `pollingTimeout`), the operation times out with an error.
 

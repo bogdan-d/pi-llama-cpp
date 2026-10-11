@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   API_KEY_PLACEHOLDER,
   LLAMA_SERVER_URL,
+  POLLING_INTERVAL,
   POLLING_TIMEOUT,
   PROVIDER_PREFIX,
   SERVER_TIMEOUT,
@@ -450,6 +451,7 @@ describe("resolveTimeouts", () => {
     const result = await manager.resolveTimeouts();
 
     expect(result).toEqual({
+      pollingInterval: POLLING_INTERVAL,
       pollingTimeout: POLLING_TIMEOUT,
       serverTimeout: SERVER_TIMEOUT,
     });
@@ -492,6 +494,7 @@ describe("resolveTimeouts", () => {
     const result = await manager.resolveTimeouts();
 
     expect(result).toEqual({
+      pollingInterval: POLLING_INTERVAL,
       pollingTimeout: 90000,
       serverTimeout: 2000,
     });

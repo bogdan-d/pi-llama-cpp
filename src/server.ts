@@ -85,6 +85,14 @@ export class Server {
   }
 
   /**
+   * Time (ms) between status checks during load/unload.
+   * Resolved live from the injected settings manager.
+   */
+  async getPollingInterval(): Promise<number> {
+    return (await this.settings.resolveTimeouts()).pollingInterval;
+  }
+
+  /**
    * Maximum time (ms) to wait for model loading before giving up.
    * Resolved live from the injected settings manager.
    */

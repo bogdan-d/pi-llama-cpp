@@ -118,6 +118,11 @@ export interface LlamaSettings {
    */
   autoloadOnMessage?: boolean;
   /**
+   * Time (ms) between status checks during load/unload.
+   * @default 500
+   */
+  pollingInterval?: number;
+  /**
    * Maximum time (ms) to wait for model loading before giving up.
    * @default 60000
    */

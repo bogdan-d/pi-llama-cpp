@@ -5,6 +5,7 @@ import type { ApiClient } from "../src/api/client";
 import {
   API_KEY_PLACEHOLDER,
   AUTOLOAD_ON_MESSAGE,
+  POLLING_INTERVAL,
   POLLING_TIMEOUT,
   REACT_TO_MODEL_SELECT,
   SERVER_TIMEOUT,
@@ -140,6 +141,7 @@ export const createMockServer = (
     ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
     ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
       resolveTimeouts: vi.fn(async () => ({
+        pollingInterval: POLLING_INTERVAL,
         pollingTimeout: pollingTimeout ?? POLLING_TIMEOUT,
         serverTimeout: serverTimeout ?? SERVER_TIMEOUT,
       })),

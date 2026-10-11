@@ -1,5 +1,6 @@
 import type { SettingsItem } from "./base";
 import { AutoloadOnMessageSettingsItem } from "./items/autoload-on-message";
+import { PollingIntervalSettingsItem } from "./items/polling-interval";
 import { PollingTimeoutSettingsItem } from "./items/polling-timeout";
 import { ReactToModelSelectSettingsItem } from "./items/react-to-model-select";
 import { ServerTimeoutSettingsItem } from "./items/server-timeout";
@@ -14,6 +15,7 @@ export const SETTINGS_ITEMS: Record<string, SettingsItem<unknown>> = {
   reactToModelSelect: new ReactToModelSelectSettingsItem(),
   autoloadOnMessage: new AutoloadOnMessageSettingsItem(),
   sortBy: new SortBySettingsItem(),
+  pollingInterval: new PollingIntervalSettingsItem(),
   pollingTimeout: new PollingTimeoutSettingsItem(),
   serverTimeout: new ServerTimeoutSettingsItem(),
   showServerUrls: new ShowServerUrlsSettingsItem(),

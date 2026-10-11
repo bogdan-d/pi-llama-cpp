@@ -9,6 +9,7 @@ import { join } from "node:path";
 import {
   API_KEY_PLACEHOLDER,
   AUTOLOAD_ON_MESSAGE,
+  POLLING_INTERVAL,
   POLLING_TIMEOUT,
   REACT_TO_MODEL_SELECT,
   SERVER_TIMEOUT,
@@ -213,14 +214,16 @@ export class LlamaSettingsManager {
   /**
    * Resolves the timeout settings for polling and server checks.
    *
-   * @returns Object with polling and server timeout values
+   * @returns Object with polling interval, polling timeout, and server timeout values
    */
   async resolveTimeouts(): Promise<{
+    pollingInterval: number;
     pollingTimeout: number;
     serverTimeout: number;
   }> {
     const llamaSettings = await this.getLlamaSettings();
     return {
+      pollingInterval: llamaSettings.pollingInterval ?? POLLING_INTERVAL,
       pollingTimeout: llamaSettings.pollingTimeout ?? POLLING_TIMEOUT,
       serverTimeout: llamaSettings.serverTimeout ?? SERVER_TIMEOUT,
     };

@@ -1,5 +1,5 @@
 import type { ModelCost } from "@earendil-works/pi-ai";
-import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
+import { FALLBACK_CTX } from "../constants";
 import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
@@ -261,14 +261,14 @@ export abstract class BaseModel {
         // the same SSE connection, so a timer orphaned by a server restart
         // or reconnect can fire during a later, healthy load. Check the
         // model's real status over HTTP before surfacing an error.
-        await this.pollStatus();
+        await this.pollStatus(Status.LOADED);
         const finalStatus = await this.getStatus();
         if (finalStatus !== Status.LOADED && finalStatus !== Status.SLEEPING) {
           throw new Error(`Model loading failed: ${this.id}`);
         }
       }
     } else {
-      await this.pollStatus();
+      await this.pollStatus(Status.LOADED);
     }
   }
 
@@ -280,27 +280,31 @@ export abstract class BaseModel {
   }
 
   /**
-   * Polls llama-server to check when the model is loaded
+   * Polls llama-server until the model reaches the expected status.
    *
-   * @param startTime The initial polling timestamp
-   * @param timeout The maximum amount of ms before timeout. Defaults to server's pollingTimeout
-   * @param interval The polling interval. Defaults to POLLING_INTERVAL
+   * @param expected The status to wait for
    */
-  protected async pollStatus(
-    startTime: number = Date.now(),
-    timeout?: number,
-    interval: number = POLLING_INTERVAL,
-  ): Promise<void> {
-    if (timeout === undefined) {
-      timeout = await this.server.getPollingTimeout();
-    }
-    while ((await this.getStatus()) === Status.LOADING) {
-      // Force a timeout if we wasted too much time polling
+  protected async pollStatus(expected: Status): Promise<void> {
+    const startTime = Date.now();
+    const timeout = await this.server.getPollingTimeout();
+    const interval = await this.server.getPollingInterval();
+
+    let current: Status;
+    do {
+      // Timeout on polling
       if (Date.now() - startTime > timeout) {
-        const message = `Model loading timed out after ${timeout} ms: ${this.id}`;
-        throw new Error(message);
+        throw new Error(
+          `Model ${expected} timed out after ${timeout} ms: ${this.id}`,
+        );
       }
+
       await new Promise((r) => setTimeout(r, interval));
-    }
+      current = await this.getStatus();
+
+      // Short-circuit when server didn't load at all
+      if (expected === Status.LOADED && current === Status.UNLOADED) {
+        throw new Error(`Model loading failed: ${this.id}`);
+      }
+    } while (current !== expected);
   }
 }

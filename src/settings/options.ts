@@ -30,6 +30,9 @@ export const POLLING_PRESETS = [15000, 30000, 60000, 120000, 300000];
 /** Presets (ms) for `serverTimeout` */
 export const SERVER_PRESETS = [500, 1000, 2000, 5000, 10000];
 
+/** Presets (ms) for `pollingInterval` */
+export const POLLING_INTERVAL_PRESETS = [250, 500, 1000, 2000];
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
