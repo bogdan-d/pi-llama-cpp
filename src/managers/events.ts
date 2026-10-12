@@ -1,8 +1,10 @@
 import {
   type BeforeProviderRequestEvent,
+  type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { READABLE_TIMEOUT } from "../constants";
+import { PROVIDER_NAME, READABLE_TIMEOUT } from "../constants";
+import { errorMessage } from "../utils/errors";
 import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
 import type { LlamaSettingsManager } from "../managers/settings";
@@ -18,11 +20,10 @@ export class EventManager {
    * hook — a shared static is the least-plumbing bridge between the two
    * event-owning managers.
    *
-   * Known limits, accepted: (1) single slot — a second overlapping load
+   * Known limits, accepted: single slot — a second overlapping load
    * overwrites the first, and the first load's onFinished reset can clear
    * the flag while the second is still loading, so the session-switch
-   * warning may be missed; (2) loads initiated from this class
-   * (onModelSelect / autoLoadIfNeeded) never set the flag.
+   * warning may be missed.
    */
   static inflightModel: BaseModel | null = null;
 
@@ -32,8 +33,9 @@ export class EventManager {
   ) {}
 
   /**
-   * Resets the in-flight model reference. Called by CommandManager when
-   * its load settles (see `inflightModel` for why this lives on a static).
+   * Resets the in-flight model reference. Called by `loadWithFeedback`
+   * when the load settles (see `inflightModel` for why this lives on a
+   * static).
    */
   static resetInflightModel() {
     EventManager.inflightModel = null;
@@ -44,8 +46,13 @@ export class EventManager {
    *
    * @param event Model selection event
    * @param ctx Pi context
+   * @param pi Pi extension API
    */
-  async onModelSelect(event: ModelSelectEvent, ctx: ExtensionContext) {
+  async onModelSelect(
+    event: ModelSelectEvent,
+    ctx: ExtensionContext,
+    pi: ExtensionAPI,
+  ) {
     // Check if the model_select event should be used
     if (!(await this.settings.resolveReactToModelSelect())) return;
 
@@ -55,13 +62,7 @@ export class EventManager {
       const model = models.find((m) => m.id === event.model.id);
       if (!model) continue;
 
-      ctx.ui.notify(`Loading ${model.name}...`, "info");
-      await model
-        .load()
-        .then(() => ctx.ui.notify(`Model ${model.name} ready`, "info"))
-        .catch(() =>
-          ctx.ui.notify(`Failed to load model ${model.name}`, "error"),
-        );
+      await this.loadWithFeedback(model, ctx, pi);
       return;
     }
   }
@@ -70,14 +71,20 @@ export class EventManager {
    * Loads the model if auto-loading is enabled and the model is unloaded.
    *
    * @param model The model to potentially auto-load
+   * @param ctx Pi context
+   * @param pi Pi extension API
    */
-  private async autoLoadIfNeeded(model: BaseModel): Promise<void> {
+  private async autoLoadIfNeeded(
+    model: BaseModel,
+    ctx: ExtensionContext,
+    pi: ExtensionAPI,
+  ): Promise<void> {
     if (!(await this.settings.resolveAutoloadOnMessage())) return;
 
     const status = await model.getStatus();
     if (status !== Status.UNLOADED) return;
 
-    await model.load();
+    await this.loadWithFeedback(model, ctx, pi);
   }
 
   /**
@@ -106,11 +113,14 @@ export class EventManager {
    * Adds a custom thinking budget to the request payload.
    *
    * @param event Request event
+   * @param ctx Pi context
+   * @param pi Pi extension API
    * @returns Updated payload
    */
   async onBeforeProviderRequest(
     event: BeforeProviderRequestEvent,
     ctx: ExtensionContext,
+    pi: ExtensionAPI,
   ) {
     const payload = event.payload as { model?: string };
     const { model } = payload;
@@ -124,7 +134,7 @@ export class EventManager {
     if (!serverModel) return payload;
 
     // Auto-load if enabled and model is unloaded
-    await this.autoLoadIfNeeded(serverModel);
+    await this.autoLoadIfNeeded(serverModel, ctx, pi);
 
     // Retrieve pi's current thinking level, so we can setup a budget
     const level =
@@ -139,5 +149,67 @@ export class EventManager {
     if (level === "max") return payload;
 
     return { ...payload, thinking_budget_tokens };
+  }
+
+  /**
+   * Loads a model with full feedback: loading notification, SSE progress
+   * (when available), inflight tracking, ready/error notifications,
+   * model switch, provider re-scan, and status bar refresh.
+   *
+   * Non-blocking internally (fire-and-forget). Callers may `await` the
+   * returned promise if they need to block until the load completes.
+   *
+   * @param model The model to load
+   * @param ctx Pi context
+   * @param pi Pi extension API (for model switching and provider re-scan)
+   */
+  async loadWithFeedback(
+    model: BaseModel,
+    ctx: ExtensionContext,
+    pi: ExtensionAPI,
+  ): Promise<void> {
+    ctx.ui.notify(`Loading ${model.name}...`, "info");
+    EventManager.inflightModel = model;
+
+    // Subscribe to SSE progress when available
+    const server = this.serverManager.getServer(model);
+    let cleanupProgress = () => {};
+    if (server?.sseManager && (await server.sseManager.probeSSE())) {
+      cleanupProgress = server.sseManager.subscribeToProgress(
+        model.id,
+        (percentage, stage) => {
+          const stageText = stage ? ` (${stage})` : "";
+          ctx.ui.notify(
+            `Loading ${model.name}... [${percentage}%${stageText}]`,
+            "info",
+          );
+        },
+      );
+    }
+
+    // Execute the loading process
+    try {
+      await model.load();
+
+      if ((await model.getStatus()) === Status.FAILED)
+        throw new Error(`Failed to load model ${model.name}`);
+      ctx.ui.notify(`Model ${model.name} ready`, "info");
+
+      // Switch the loaded model in Pi's registry
+      const { serverId } = model;
+      const piModel = ctx.modelRegistry.find(serverId, model.id);
+      if (piModel) await pi.setModel(piModel);
+    } catch (err) {
+      ctx.ui.notify(errorMessage(err), "error");
+    } finally {
+      cleanupProgress();
+      EventManager.resetInflightModel();
+
+      // Re-scan providers so the model registry reflects the new state
+      await this.serverManager.update(pi);
+
+      ctx.ui.setStatus(PROVIDER_NAME, " ");
+      ctx.ui.setStatus(PROVIDER_NAME, undefined);
+    }
   }
 }

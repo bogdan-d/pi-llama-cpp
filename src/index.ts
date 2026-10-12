@@ -17,7 +17,11 @@ export default async function (pi: ExtensionAPI) {
   const settings = createSettingsManager();
   const serverManager = new ServerManager(settings);
   const eventManager = new EventManager(serverManager, settings);
-  const commandManager = new CommandManager(serverManager, settings);
+  const commandManager = new CommandManager(
+    serverManager,
+    settings,
+    eventManager,
+  );
 
   // Register providers once at startup
   await serverManager.initialize(pi);
@@ -41,13 +45,13 @@ export default async function (pi: ExtensionAPI) {
   pi.on(
     "before_provider_request",
     async (event: BeforeProviderRequestEvent, ctx: ExtensionContext) =>
-      await eventManager.onBeforeProviderRequest(event, ctx),
+      await eventManager.onBeforeProviderRequest(event, ctx, pi),
   );
 
   pi.on(
     "model_select",
     async (event: ModelSelectEvent, ctx: ExtensionContext) =>
-      await eventManager.onModelSelect(event, ctx),
+      await eventManager.onModelSelect(event, ctx, pi),
   );
   pi.on(
     "session_before_switch",

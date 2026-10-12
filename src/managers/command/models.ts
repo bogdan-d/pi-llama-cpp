@@ -7,7 +7,6 @@ import { Action } from "../../enums/action";
 import { Mode } from "../../enums/mode";
 import { Status } from "../../enums/status";
 import { BaseModel } from "../../models/baseModel";
-import { errorMessage } from "../../utils/errors";
 import { EventManager } from "../events";
 import type { ServerManager } from "../server";
 import type { LlamaSettingsManager } from "../settings";
@@ -28,6 +27,7 @@ export class ModelsMenu {
   constructor(
     private readonly serverManager: ServerManager,
     private readonly settings: LlamaSettingsManager,
+    private readonly eventManager: EventManager,
   ) {}
 
   /**
@@ -75,68 +75,8 @@ export class ModelsMenu {
     // Actions: Load / Load & Switch / Retry
     const loadActions = [Action.LOAD, Action.LOAD_AND_SWITCH, Action.RETRY];
     if (loadActions.includes(action)) {
-      ctx.ui.notify(`Loading ${model.name}...`, "info");
-      // Mark the load as in-flight so session_before_switch can warn about
-      // it (see EventManager.inflightModel for the coupling rationale)
-      EventManager.inflightModel = model;
-
-      // Subscribe to progress events; skip when the server is gone
-      // (removed/edited away mid-load → getServer returns undefined)
-      const server = this.serverManager.getServer(model);
-      let cleanupProgress = () => {};
-      if (server && (await server.sseManager.probeSSE())) {
-        cleanupProgress = server.sseManager.subscribeToProgress(
-          model.id,
-          (percentage, stage) => {
-            const stageText = stage ? ` (${stage})` : "";
-            ctx.ui.notify(
-              `Loading ${model.name}... [${percentage}%${stageText}]`,
-              "info",
-            );
-          },
-        );
-      }
-
-      const onSuccess = async () => {
-        const { serverId } = model;
-        const piModel = ctx.modelRegistry.find(serverId, model.id);
-        if (!piModel)
-          throw new Error(`Cannot find model ${model.name} in pi registry`);
-
-        // Verify failure
-        if ((await model.getStatus()) === Status.FAILED)
-          throw new Error(`Failed to load model ${model.name}`);
-
-        // Select the model if asked
-        if (action === Action.LOAD_AND_SWITCH) await pi.setModel(piModel);
-
-        ctx.ui.notify(`Model ${model.name} ready`, "info");
-      };
-
-      const onFailure = (err: any) => {
-        const message = errorMessage(err);
-
-        try {
-          ctx.ui.notify(message, "error");
-        } catch {
-          // ctx went stale between error and notification
-        }
-      };
-
-      const onFinished = async () => {
-        cleanupProgress();
-        EventManager.resetInflightModel();
-
-        // Re-scan providers to ensure accuracy of loaded models
-        await this.serverManager.update(pi);
-
-        // Force TUI refresh so Pi picks up the updated model states
-        ctx.ui.setStatus(PROVIDER_NAME, " ");
-        ctx.ui.setStatus(PROVIDER_NAME, undefined);
-      };
-
-      // Load the model without blocking the UI
-      model.load().then(onSuccess).catch(onFailure).finally(onFinished);
+      // Load the model without blocking the UI (intentionally not awaiting it)
+      this.eventManager.loadWithFeedback(model, ctx, pi);
     }
   }
 

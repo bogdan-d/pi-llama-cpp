@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { THINKING_BUDGETS } from "../../src/constants";
 import { Status } from "../../src/enums/status";
 import { EventManager } from "../../src/managers/events";
+import { BaseModel } from "../../src/models/baseModel";
 import { ServerManager } from "../../src/managers/server";
 import type { Server } from "../../src/server";
-import { createMockModel, createMockServer, makeSettingsStub } from "../mocks";
+import {
+  createMockModel,
+  createMockPi,
+  createMockServer,
+  makeSettingsStub,
+} from "../mocks";
 
 /**
  * Injected settings stub (EventManager and — in the live-list test — the
@@ -12,18 +18,29 @@ import { createMockModel, createMockServer, makeSettingsStub } from "../mocks";
  * (budgets, autoload, …) cannot leak between tests.
  */
 let settingsStub = makeSettingsStub();
+let mockPi = createMockPi();
 
 /**
- * Builds an EventManager on a ServerManager stub exposing `servers`.
- * (The real ServerManager is exercised in the live-list test below.)
+ * Builds an EventManager on a ServerManager stub exposing `servers` and
+ * `getServer`. (The real ServerManager is exercised in the live-list test
+ * below.)
  */
 const createEventManager = (...servers: Server[]) =>
-  new EventManager({ servers } as unknown as ServerManager, settingsStub);
+  new EventManager(
+    {
+      servers,
+      getServer: (model: BaseModel) =>
+        servers.find((s) => s.models.some((m) => m.id === model.id)),
+      update: vi.fn(async () => {}),
+    } as unknown as ServerManager,
+    settingsStub,
+  );
 
 beforeEach(() => {
   vi.restoreAllMocks();
   EventManager.resetInflightModel();
   settingsStub = makeSettingsStub();
+  mockPi = createMockPi();
 });
 
 const createPayload = (modelId: string) => ({
@@ -48,7 +65,7 @@ const createMockCtx = (
 ) =>
   ({
     thinkingLevel,
-    ui: { notify: vi.fn() },
+    ui: { notify: vi.fn(), setStatus: vi.fn() },
   }) as any;
 
 describe("EventManager.onBeforeProviderRequest", () => {
@@ -81,6 +98,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
         const result = (await eventManager.onBeforeProviderRequest(
           event as any,
           ctx,
+          mockPi as any,
         )) as Record<string, unknown>;
 
         expect(result.model).toBe("model-a");
@@ -107,6 +125,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       expect(result.messages).toEqual([{ role: "user", content: "test" }]);
@@ -127,6 +146,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       );
 
       expect(result).toEqual(createNonLlamaPayload());
@@ -145,6 +165,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       );
 
       expect(result).toEqual({ messages: [] });
@@ -169,6 +190,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       expect(result.thinking_budget_tokens).toBe(4096);
@@ -191,6 +213,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       // medium uses default since user only overrode low
@@ -219,6 +242,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       // Should fall back to default since "medium" is not in user budgets
@@ -242,6 +266,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       expect(result).toMatchObject({
@@ -267,6 +292,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       expect(result).toEqual(createPayload("model-a"));
@@ -290,6 +316,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       const result = (await eventManager.onBeforeProviderRequest(
         event as any,
         ctx,
+        mockPi as any,
       )) as Record<string, unknown>;
 
       expect(result.thinking_budget_tokens).toBe(THINKING_BUDGETS.high);
@@ -313,7 +340,7 @@ describe("EventManager.onModelSelect", () => {
       model: { provider: server.providerId, id: "model-a" },
     } as any;
 
-    await eventManager.onModelSelect(event, ctx);
+    await eventManager.onModelSelect(event, ctx, mockPi as any);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Loading model-a...", "info");
   });
@@ -331,7 +358,7 @@ describe("EventManager.onModelSelect", () => {
       model: { provider: server.providerId, id: "model-a" },
     } as any;
 
-    await eventManager.onModelSelect(event, ctx);
+    await eventManager.onModelSelect(event, ctx, mockPi as any);
 
     expect(ctx.ui.notify).not.toHaveBeenCalled();
   });
@@ -351,10 +378,12 @@ describe("EventManager.autoLoadIfNeeded", () => {
     });
     const eventManager = createEventManager(server);
     const model = server.models[0];
+    const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model);
+    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
 
     expect(model.load).toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Loading model-a...", "info");
   });
 
   it("should not load the model when autoloadOnMessage is false", async () => {
@@ -370,8 +399,9 @@ describe("EventManager.autoLoadIfNeeded", () => {
     });
     const eventManager = createEventManager(server);
     const model = server.models[0];
+    const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model);
+    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
 
     expect(model.load).not.toHaveBeenCalled();
   });
@@ -389,8 +419,9 @@ describe("EventManager.autoLoadIfNeeded", () => {
     });
     const eventManager = createEventManager(server);
     const model = server.models[0];
+    const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model);
+    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
 
     expect(model.load).not.toHaveBeenCalled();
   });
@@ -408,8 +439,9 @@ describe("EventManager.autoLoadIfNeeded", () => {
     });
     const eventManager = createEventManager(server);
     const model = server.models[0];
+    const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model);
+    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
 
     expect(model.load).not.toHaveBeenCalled();
   });
@@ -446,6 +478,7 @@ describe("EventManager with a live ServerManager", () => {
     const result = (await eventManager.onBeforeProviderRequest(
       { payload: createPayload("model-b") } as any,
       ctx,
+      mockPi as any,
     )) as Record<string, unknown>;
     expect(result.thinking_budget_tokens).toBe(THINKING_BUDGETS.medium);
 
@@ -455,6 +488,7 @@ describe("EventManager with a live ServerManager", () => {
     await eventManager.onModelSelect(
       { model: { provider: serverB.providerId, id: "model-b" } } as any,
       selectCtx,
+      mockPi as any,
     );
     expect(selectCtx.ui.notify).toHaveBeenCalledWith(
       "Loading model-b...",

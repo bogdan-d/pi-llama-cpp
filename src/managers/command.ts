@@ -8,6 +8,7 @@ import { SettingsEditor } from "../settings/menu/settings-menu";
 import { OverrideSettingsList } from "../ui/editors/override/overrideList";
 import { ServerSettingsList } from "../ui/editors/server/serverEditor";
 import { ModelsMenu } from "./command/models";
+import { EventManager } from "./events";
 import { ServerManager } from "./server";
 import type { LlamaSettingsManager } from "./settings";
 
@@ -50,8 +51,9 @@ export class CommandManager {
   constructor(
     private readonly serverManager: ServerManager,
     private readonly settings: LlamaSettingsManager,
+    eventManager: EventManager,
   ) {
-    this.modelsMenu = new ModelsMenu(serverManager, settings);
+    this.modelsMenu = new ModelsMenu(serverManager, settings, eventManager);
   }
 
   /**

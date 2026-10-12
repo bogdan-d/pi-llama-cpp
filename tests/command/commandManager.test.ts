@@ -4,6 +4,7 @@ import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
+import { EventManager } from "../../src/managers/events";
 import { ServerManager } from "../../src/managers/server";
 import type { LlamaSettingsManager } from "../../src/managers/settings";
 import { SETTINGS_ITEMS } from "../../src/settings/defaults";
@@ -29,6 +30,14 @@ beforeEach(() => {
 });
 
 /**
+ * Creates a minimal EventManager for CommandManager tests.
+ */
+const createMockEventManager = (
+  serverManager: ServerManager,
+  settingsStub: LlamaSettingsManager,
+) => new EventManager(serverManager, settingsStub);
+
+/**
  * Waits for a ServerSettingsList to finish its async initialization
  * (health checks + SettingsList construction).
  */
@@ -50,12 +59,18 @@ describe("CommandManager", () => {
   let commandManager: CommandManager;
   let settingsStub: LlamaSettingsManager;
   let mockPi: ReturnType<typeof createMockPi>;
+  let eventManager: ReturnType<typeof createMockEventManager>;
 
   beforeEach(() => {
     mockPi = createMockPi();
     settingsStub = makeSettingsStub();
     serverManager = new ServerManager(settingsStub);
-    commandManager = new CommandManager(serverManager, settingsStub);
+    eventManager = createMockEventManager(serverManager, settingsStub);
+    commandManager = new CommandManager(
+      serverManager,
+      settingsStub,
+      eventManager,
+    );
   });
 
   describe("getArgumentCompletions", () => {
@@ -100,7 +115,15 @@ describe("CommandManager", () => {
         resolveServers: vi.fn(async () => [server]),
       });
       serverManager = new ServerManager(unloadSettings);
-      commandManager = new CommandManager(serverManager, unloadSettings);
+      const unloadEventManager = createMockEventManager(
+        serverManager,
+        unloadSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        unloadSettings,
+        unloadEventManager,
+      );
 
       const ctx = {
         ui: {
@@ -130,7 +153,15 @@ describe("CommandManager", () => {
         resolveServers: vi.fn(async () => [server]),
       });
       serverManager = new ServerManager(infoSettings);
-      commandManager = new CommandManager(serverManager, infoSettings);
+      const infoEventManager = createMockEventManager(
+        serverManager,
+        infoSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        infoSettings,
+        infoEventManager,
+      );
 
       const ctx = {
         ui: {
@@ -340,7 +371,15 @@ describe("CommandManager", () => {
       const editorSettings = makeSettingsStub({
         getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const wireEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        wireEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -397,7 +436,15 @@ describe("CommandManager", () => {
       const editorSettings = makeSettingsStub({
         getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const cancelledEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        cancelledEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -434,7 +481,15 @@ describe("CommandManager", () => {
           { url: "http://doomed:2" },
         ]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const doomedEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        doomedEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -497,8 +552,16 @@ describe("CommandManager", () => {
         resolveServers: vi.fn(async () => servers),
       });
       const serverManager = new ServerManager(settingsStub);
+      const factoryEventManager = createMockEventManager(
+        serverManager,
+        settingsStub,
+      );
       return {
-        commandManager: new CommandManager(serverManager, settingsStub),
+        commandManager: new CommandManager(
+          serverManager,
+          settingsStub,
+          factoryEventManager,
+        ),
         serverManager,
         settingsStub,
         servers,
@@ -631,7 +694,15 @@ describe("CommandManager", () => {
         resolveShowServerUrls: vi.fn(async () => false),
       });
       const serverManager = new ServerManager(settingsStub);
-      const commandManager = new CommandManager(serverManager, settingsStub);
+      const urlEventManager = createMockEventManager(
+        serverManager,
+        settingsStub,
+      );
+      const commandManager = new CommandManager(
+        serverManager,
+        settingsStub,
+        urlEventManager,
+      );
 
       const ctx = createMockCtx((prompt, options) => {
         if (prompt.includes("models")) return options[0];
@@ -660,7 +731,15 @@ describe("CommandManager", () => {
         resolveShowServerUrls: vi.fn(async () => true),
       });
       const serverManager = new ServerManager(settingsStub);
-      const commandManager = new CommandManager(serverManager, settingsStub);
+      const showUrlEventManager = createMockEventManager(
+        serverManager,
+        settingsStub,
+      );
+      const commandManager = new CommandManager(
+        serverManager,
+        settingsStub,
+        showUrlEventManager,
+      );
 
       const ctx = createMockCtx((prompt, options) => {
         if (prompt.includes("models")) return options[0];
