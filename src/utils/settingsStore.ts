@@ -50,7 +50,9 @@ export class SettingsStore {
       await this.write(root);
     };
     const result = this.writeQueue.then(run, run);
-    this.writeQueue = result.catch(() => {});
+    this.writeQueue = result.catch(() => {
+      this.writeQueue = Promise.resolve();
+    });
     return result;
   }
 }

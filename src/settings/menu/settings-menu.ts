@@ -118,20 +118,28 @@ export class SettingsEditor implements Component, Focusable {
         this.options.onError(result.errors?.join("\n") ?? "Invalid value.");
         return;
       }
-      await this.options.settings.setLlamaSettings(result.config!);
-      // Re-read to sync with the file (external edits may have landed).
-      this.currentConfig = await this.options.settings.getLlamaSettings();
-      this.settingsList?.updateValue(id, item.format(this.currentConfig));
-      this.options.tui.requestRender();
+      try {
+        await this.options.settings.setLlamaSettings(result.config!);
+        // Re-read to sync with the file (external edits may have landed).
+        this.currentConfig = await this.options.settings.getLlamaSettings();
+        this.settingsList?.updateValue(id, item.format(this.currentConfig));
+        this.options.tui.requestRender();
+      } catch (error) {
+        this.options.onError(`Failed to save setting: ${error}`);
+      }
     };
 
     const onResetFn = async (id: string): Promise<void> => {
       const item = SETTINGS_ITEMS[id];
       if (!item) return;
-      await this.options.settings.deleteLlamaSetting(item.id);
-      this.currentConfig = await this.options.settings.getLlamaSettings();
-      this.settingsList?.updateValue(id, item.format(this.currentConfig));
-      this.options.tui.requestRender();
+      try {
+        await this.options.settings.deleteLlamaSetting(item.id);
+        this.currentConfig = await this.options.settings.getLlamaSettings();
+        this.settingsList?.updateValue(id, item.format(this.currentConfig));
+        this.options.tui.requestRender();
+      } catch (error) {
+        this.options.onError(`Failed to delete setting: ${error}`);
+      }
     };
 
     this.settingsList = new ResettableSettingsList(
