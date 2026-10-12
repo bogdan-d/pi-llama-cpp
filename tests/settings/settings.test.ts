@@ -1044,3 +1044,145 @@ describe("Server.findOverrideForModel", () => {
     });
   });
 });
+
+describe("resolveUrls", () => {
+  const mockGetAgentDir = vi.mocked(getAgentDir);
+  const mockGetProjectSettings = vi.mocked(
+    mockSettingsManager.getProjectSettings,
+  );
+  const mockGetGlobalSettings = vi.mocked(
+    mockSettingsManager.getGlobalSettings,
+  );
+  const mockReload = vi.mocked(mockSettingsManager.reload);
+
+  afterEach(() => {
+    delete process.env.LLAMA_SERVER_URL;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAgentDir.mockReturnValue("/fake/agent/dir");
+    mockGetProjectSettings.mockReturnValue({});
+    mockGetGlobalSettings.mockReturnValue({});
+    mockReload.mockResolvedValue(undefined);
+    manager = createSettingsManager();
+  });
+
+  it("falls back to default when nothing is configured", async () => {
+    const result = await manager.resolveUrls();
+    expect(result).toEqual([LLAMA_SERVER_URL]);
+  });
+
+  it("prioritizes env variable over all config sources", async () => {
+    process.env.LLAMA_SERVER_URL = "http://env:9090";
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://servers:9090" }],
+      },
+    });
+    mockGetGlobalSettings.mockReturnValue({
+      llamaServerUrl: "http://legacy:7070",
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://env:9090"]);
+  });
+
+  it("prioritizes llamaSettings.servers over legacy llamaServerUrl", async () => {
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://servers:9090" }],
+      },
+    });
+    mockGetGlobalSettings.mockReturnValue({
+      llamaServerUrl: "http://legacy:7070",
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://servers:9090"]);
+  });
+
+  it("falls back to legacy when servers is empty", async () => {
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [],
+      },
+    });
+    mockGetGlobalSettings.mockReturnValue({
+      llamaServerUrl: "http://legacy:7070",
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://legacy:7070"]);
+  });
+
+  it("returns empty arrays from settings when values are falsy", async () => {
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: undefined,
+      },
+    });
+    mockGetGlobalSettings.mockReturnValue({
+      llamaServerUrl: undefined,
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual([LLAMA_SERVER_URL]);
+  });
+});
+
+describe("URL resolution warnings", () => {
+  const mockGetAgentDir = vi.mocked(getAgentDir);
+  const mockGetProjectSettings = vi.mocked(
+    mockSettingsManager.getProjectSettings,
+  );
+  const mockGetGlobalSettings = vi.mocked(
+    mockSettingsManager.getGlobalSettings,
+  );
+  const mockReload = vi.mocked(mockSettingsManager.reload);
+
+  afterEach(() => {
+    delete process.env.LLAMA_SERVER_URL;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAgentDir.mockReturnValue("/fake/agent/dir");
+    mockGetProjectSettings.mockReturnValue({});
+    mockGetGlobalSettings.mockReturnValue({});
+    mockReload.mockResolvedValue(undefined);
+    manager = createSettingsManager();
+  });
+
+  it("collects warnings for invalid env URLs", async () => {
+    process.env.LLAMA_SERVER_URL = "invalid-url;http://good:9931";
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931"]);
+    expect(manager.takeWarnings()).toEqual([
+      "Ignoring invalid server URL 'invalid-url' (needs http(s)://)",
+    ]);
+  });
+
+  it("collects warnings for invalid server URLs", async () => {
+    mockGetProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "bad-url" }, { url: "http://good:9931" }],
+      },
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931"]);
+    expect(manager.takeWarnings()).toEqual([
+      "Ignoring invalid server URL 'bad-url' (needs http(s)://)",
+    ]);
+  });
+
+  it("clears warnings after takeWarnings()", async () => {
+    process.env.LLAMA_SERVER_URL = "bad;http://good:9931";
+
+    await manager.resolveUrls();
+    expect(manager.takeWarnings()).toHaveLength(1);
+    expect(manager.takeWarnings()).toEqual([]);
+  });
+});

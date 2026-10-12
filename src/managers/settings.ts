@@ -8,6 +8,7 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import {
   API_KEY_PLACEHOLDER,
+  LLAMA_SERVER_URL,
   SETTINGS_KEY,
   THINKING_BUDGETS,
 } from "../constants";
@@ -26,8 +27,8 @@ import {
 import type { SortBy } from "../interfaces/sortBy";
 import { Server } from "../server";
 import { CredentialResolver } from "../utils/credentialResolver";
+import { ServerUrl } from "../utils/urls";
 import { SettingsStore } from "../utils/settingsStore";
-import { UrlResolver } from "../utils/urlResolver";
 
 export class LlamaSettingsManager {
   private settingsManager = SettingsManager.create(process.cwd());
@@ -52,17 +53,16 @@ export class LlamaSettingsManager {
   /** Delegates credential key resolution (see `utils/credentialResolver`). */
   private credentialResolver = new CredentialResolver();
 
-  /** Delegated multi-source URL resolution chain (see `utils/urlResolver`). */
-  private urlResolver = new UrlResolver({
-    getLlamaSettings: () => this.getLlamaSettings(),
-    getMergedSettings: () => this.getMergedSettings(),
-  });
+  /** Warnings collected during URL resolution (dropped invalid entries). */
+  private warnings: string[] = [];
 
   /**
    * Returns and clears warnings collected during URL resolution.
    */
   takeWarnings(): string[] {
-    return this.urlResolver.takeWarnings();
+    const warnings = [...this.warnings];
+    this.warnings.length = 0;
+    return warnings;
   }
 
   /**
@@ -94,13 +94,68 @@ export class LlamaSettingsManager {
   }
 
   /**
-   * Resolves the server URLs to use. Delegates to the URL resolver chain
-   * (env → settings → legacy → default, see `utils/urlResolver`).
+   * Resolves the server URLs to use in the following order:
+   *
+   * - `LLAMA_SERVER_URL` env variable
+   * - `llamaSettings.servers[].url` (current — project, then global)
+   * - `llamaServerUrl` key (legacy — project, then global)
+   * - Default URL
    *
    * @returns The list of URLs to use
    */
   async resolveUrls(): Promise<string[]> {
-    return this.urlResolver.resolveUrls();
+    let response = this.resolveEnvUrls();
+    if (response.length > 0) return response;
+
+    response = await this.resolveServerUrls();
+    if (response.length > 0) return response;
+
+    response = await this.resolveLegacyUrls();
+    if (response.length > 0) return response;
+
+    return [LLAMA_SERVER_URL];
+  }
+
+  private resolveEnvUrls(): string[] {
+    const raw = process.env.LLAMA_SERVER_URL;
+    if (!raw) return [];
+    return this.parseUrls(raw);
+  }
+
+  private async resolveServerUrls(): Promise<string[]> {
+    const { servers = [] } = await this.getLlamaSettings();
+    return servers.map((s) => this.parseUrls(s.url)).flat();
+  }
+
+  private async resolveLegacyUrls(): Promise<string[]> {
+    const { llamaServerUrl = null } = await this.getMergedSettings();
+    if (!llamaServerUrl) return [];
+    return this.parseUrls(llamaServerUrl);
+  }
+
+  /**
+   * Parses a raw URL string into an array of cleaned URLs.
+   * Splits on semicolons, trims whitespace, filters empty strings, strips
+   * trailing slashes, and drops entries without an http(s) scheme —
+   * collecting a warning for each dropped entry.
+   *
+   * @param raw - The raw URL string (possibly semicolon-separated)
+   * @returns A sanitized array of URLs
+   */
+  private parseUrls(raw: string): string[] {
+    return raw
+      .split(";")
+      .map(ServerUrl.normalize)
+      .filter((u) => {
+        if (u.length === 0) return false;
+        if (!ServerUrl.isValid(u)) {
+          this.warnings.push(
+            `Ignoring invalid server URL '${u}' (needs http(s)://)`,
+          );
+          return false;
+        }
+        return true;
+      });
   }
 
   /**
