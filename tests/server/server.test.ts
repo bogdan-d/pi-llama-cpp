@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POLLING_TIMEOUT, SERVER_TIMEOUT } from "../../src/constants";
+import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-timeout";
+import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
 import { Mode } from "../../src/enums/mode";
 import { ServerStatus } from "../../src/enums/serverStatus";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
@@ -216,8 +217,12 @@ describe("Server timeouts", async () => {
   it("should resolve timeouts from the injected settings", async () => {
     const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
 
-    expect(await server.getServerTimeout()).toBe(SERVER_TIMEOUT);
-    expect(await server.getPollingTimeout()).toBe(POLLING_TIMEOUT);
+    expect(await server.getServerTimeout()).toBe(
+      ServerTimeoutSettingsItem.defaultValue,
+    );
+    expect(await server.getPollingTimeout()).toBe(
+      PollingTimeoutSettingsItem.defaultValue,
+    );
   });
 
   it("should return resolved custom values", async () => {

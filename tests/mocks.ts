@@ -2,17 +2,14 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 import { defaultBaseUrl } from "./constants";
 import type { ApiClient } from "../src/api/client";
-import {
-  API_KEY_PLACEHOLDER,
-  AUTOLOAD_ON_MESSAGE,
-  POLLING_INTERVAL,
-  POLLING_TIMEOUT,
-  REACT_TO_MODEL_SELECT,
-  SERVER_TIMEOUT,
-  SHOW_SERVER_URLS,
-  SORT_BY,
-  THINKING_BUDGETS,
-} from "../src/constants";
+import { API_KEY_PLACEHOLDER, THINKING_BUDGETS } from "../src/constants";
+import { AutoloadOnMessageSettingsItem } from "../src/settings/items/autoload-on-message";
+import { PollingIntervalSettingsItem } from "../src/settings/items/polling-interval";
+import { PollingTimeoutSettingsItem } from "../src/settings/items/polling-timeout";
+import { ReactToModelSelectSettingsItem } from "../src/settings/items/react-to-model-select";
+import { ServerTimeoutSettingsItem } from "../src/settings/items/server-timeout";
+import { ShowServerUrlsSettingsItem } from "../src/settings/items/show-server-urls";
+import { SortBySettingsItem } from "../src/settings/items/sort-by";
 import { Mode } from "../src/enums/mode";
 import { Status } from "../src/enums/status";
 import type { ModelOverride } from "../src/interfaces/settings";
@@ -38,15 +35,21 @@ export const makeSettingsStub = (
     getLlamaSettings: vi.fn(async () => ({})),
     getLlamaServers: vi.fn(async () => []),
     resolveTimeouts: vi.fn(async () => ({
-      pollingTimeout: POLLING_TIMEOUT,
-      serverTimeout: SERVER_TIMEOUT,
+      pollingTimeout: PollingTimeoutSettingsItem.defaultValue,
+      serverTimeout: ServerTimeoutSettingsItem.defaultValue,
     })),
     resolveServers: vi.fn(async () => []),
-    resolveSortBy: vi.fn(async () => SORT_BY),
-    resolveShowServerUrls: vi.fn(async () => SHOW_SERVER_URLS),
+    resolveSortBy: vi.fn(async () => SortBySettingsItem.defaultValue),
+    resolveShowServerUrls: vi.fn(
+      async () => ShowServerUrlsSettingsItem.defaultValue,
+    ),
     resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
-    resolveReactToModelSelect: vi.fn(async () => REACT_TO_MODEL_SELECT),
-    resolveAutoloadOnMessage: vi.fn(async () => AUTOLOAD_ON_MESSAGE),
+    resolveReactToModelSelect: vi.fn(
+      async () => ReactToModelSelectSettingsItem.defaultValue,
+    ),
+    resolveAutoloadOnMessage: vi.fn(
+      async () => AutoloadOnMessageSettingsItem.defaultValue,
+    ),
     resolveThinkingLevel: vi.fn(() => undefined),
     resolveThinkingBudgets: vi.fn(() => ({ ...THINKING_BUDGETS })),
     takeWarnings: vi.fn((): string[] => []),
@@ -141,9 +144,10 @@ export const createMockServer = (
     ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
     ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
       resolveTimeouts: vi.fn(async () => ({
-        pollingInterval: POLLING_INTERVAL,
-        pollingTimeout: pollingTimeout ?? POLLING_TIMEOUT,
-        serverTimeout: serverTimeout ?? SERVER_TIMEOUT,
+        pollingInterval: PollingIntervalSettingsItem.defaultValue,
+        pollingTimeout:
+          pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
+        serverTimeout: serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
       })),
     }),
   });

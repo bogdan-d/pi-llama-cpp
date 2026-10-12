@@ -42,44 +42,9 @@ export const ENDPOINT_PREFIX = "/v1";
 export const FALLBACK_CTX = 128000;
 
 /**
- * Polling interval (ms) for checking model load status
- */
-export const POLLING_INTERVAL = 500;
-
-/**
- * Maximum time (ms) to wait for model loading before giving up
- */
-export const POLLING_TIMEOUT = 60000;
-
-/**
  * Reasonable time (ms) to read notifications if context goes stale
  */
 export const READABLE_TIMEOUT = 15000;
-
-/**
- * Timeout (ms) for server verification and SSE support probe
- */
-export const SERVER_TIMEOUT = 1000;
-
-/**
- * Default value for reactToModelSelect setting.
- */
-export const REACT_TO_MODEL_SELECT = true;
-
-/**
- * Default value for autoloadOnMessage setting.
- */
-export const AUTOLOAD_ON_MESSAGE = false;
-
-/**
- * Default sort order for model lists.
- */
-export const SORT_BY = "asc";
-
-/**
- * Default for showServerUrls — show server URLs in /models by default.
- */
-export const SHOW_SERVER_URLS = true;
 
 /**
  * Thinking budgets to send to the server, depending on user-selected level in Pi.

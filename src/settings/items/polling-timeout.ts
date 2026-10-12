@@ -2,16 +2,18 @@ import type { LlamaSettings } from "../../interfaces/settings";
 import { SettingsItem, type ValidationResult } from "../base";
 import { formatMs, parseMs, POLLING_PRESETS } from "../options";
 
-export const POLLING_TIMEOUT_DEFAULT = 60000;
-
 export class PollingTimeoutSettingsItem extends SettingsItem<number> {
   readonly id = "pollingTimeout";
   readonly label = "Polling timeout";
   readonly description = "Max model-load wait (next model load)";
   readonly values = POLLING_PRESETS.map(formatMs);
 
+  static get defaultValue(): number {
+    return 60000;
+  }
+
   format(config: LlamaSettings): string {
-    const value = config[this.id] ?? POLLING_TIMEOUT_DEFAULT;
+    const value = config[this.id] ?? PollingTimeoutSettingsItem.defaultValue;
     return formatMs(value);
   }
 
@@ -24,9 +26,5 @@ export class PollingTimeoutSettingsItem extends SettingsItem<number> {
       valid: true,
       config: { pollingTimeout: parsed },
     };
-  }
-
-  getDefault(): number {
-    return POLLING_TIMEOUT_DEFAULT;
   }
 }

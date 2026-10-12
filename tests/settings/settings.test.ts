@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   API_KEY_PLACEHOLDER,
   LLAMA_SERVER_URL,
-  POLLING_INTERVAL,
-  POLLING_TIMEOUT,
   PROVIDER_PREFIX,
-  SERVER_TIMEOUT,
 } from "../../src/constants";
+import { PollingIntervalSettingsItem } from "../../src/settings/items/polling-interval";
+import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-timeout";
+import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
 import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
 import {
@@ -451,9 +451,9 @@ describe("resolveTimeouts", () => {
     const result = await manager.resolveTimeouts();
 
     expect(result).toEqual({
-      pollingInterval: POLLING_INTERVAL,
-      pollingTimeout: POLLING_TIMEOUT,
-      serverTimeout: SERVER_TIMEOUT,
+      pollingInterval: PollingIntervalSettingsItem.defaultValue,
+      pollingTimeout: PollingTimeoutSettingsItem.defaultValue,
+      serverTimeout: ServerTimeoutSettingsItem.defaultValue,
     });
   });
 
@@ -467,7 +467,7 @@ describe("resolveTimeouts", () => {
     const result = await manager.resolveTimeouts();
 
     expect(result.pollingTimeout).toBe(120000);
-    expect(result.serverTimeout).toBe(SERVER_TIMEOUT);
+    expect(result.serverTimeout).toBe(ServerTimeoutSettingsItem.defaultValue);
   });
 
   it("should use user-defined serverTimeout", async () => {
@@ -479,7 +479,7 @@ describe("resolveTimeouts", () => {
 
     const result = await manager.resolveTimeouts();
 
-    expect(result.pollingTimeout).toBe(POLLING_TIMEOUT);
+    expect(result.pollingTimeout).toBe(PollingTimeoutSettingsItem.defaultValue);
     expect(result.serverTimeout).toBe(3000);
   });
 
@@ -494,7 +494,7 @@ describe("resolveTimeouts", () => {
     const result = await manager.resolveTimeouts();
 
     expect(result).toEqual({
-      pollingInterval: POLLING_INTERVAL,
+      pollingInterval: PollingIntervalSettingsItem.defaultValue,
       pollingTimeout: 90000,
       serverTimeout: 2000,
     });

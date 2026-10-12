@@ -8,16 +8,16 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import {
   API_KEY_PLACEHOLDER,
-  AUTOLOAD_ON_MESSAGE,
-  POLLING_INTERVAL,
-  POLLING_TIMEOUT,
-  REACT_TO_MODEL_SELECT,
-  SERVER_TIMEOUT,
   SETTINGS_KEY,
-  SHOW_SERVER_URLS,
-  SORT_BY,
   THINKING_BUDGETS,
 } from "../constants";
+import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
+import { AutoloadOnMessageSettingsItem } from "../settings/items/autoload-on-message";
+import { PollingTimeoutSettingsItem } from "../settings/items/polling-timeout";
+import { ReactToModelSelectSettingsItem } from "../settings/items/react-to-model-select";
+import { ServerTimeoutSettingsItem } from "../settings/items/server-timeout";
+import { ShowServerUrlsSettingsItem } from "../settings/items/show-server-urls";
+import { SortBySettingsItem } from "../settings/items/sort-by";
 import {
   LlamaServer,
   LlamaSettings,
@@ -196,7 +196,7 @@ export class LlamaSettingsManager {
   async resolveReactToModelSelect(): Promise<boolean> {
     return (
       (await this.getLlamaSettings()).reactToModelSelect ??
-      REACT_TO_MODEL_SELECT
+      ReactToModelSelectSettingsItem.defaultValue
     );
   }
 
@@ -207,7 +207,8 @@ export class LlamaSettingsManager {
    */
   async resolveAutoloadOnMessage(): Promise<boolean> {
     return (
-      (await this.getLlamaSettings()).autoloadOnMessage ?? AUTOLOAD_ON_MESSAGE
+      (await this.getLlamaSettings()).autoloadOnMessage ??
+      AutoloadOnMessageSettingsItem.defaultValue
     );
   }
 
@@ -223,9 +224,13 @@ export class LlamaSettingsManager {
   }> {
     const llamaSettings = await this.getLlamaSettings();
     return {
-      pollingInterval: llamaSettings.pollingInterval ?? POLLING_INTERVAL,
-      pollingTimeout: llamaSettings.pollingTimeout ?? POLLING_TIMEOUT,
-      serverTimeout: llamaSettings.serverTimeout ?? SERVER_TIMEOUT,
+      pollingInterval:
+        llamaSettings.pollingInterval ??
+        PollingIntervalSettingsItem.defaultValue,
+      pollingTimeout:
+        llamaSettings.pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
+      serverTimeout:
+        llamaSettings.serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
     };
   }
 
@@ -235,7 +240,9 @@ export class LlamaSettingsManager {
    * @returns The sort order: "asc", "desc", "asc-name", "desc-name", or "api"
    */
   async resolveSortBy(): Promise<SortBy> {
-    return (await this.getLlamaSettings()).sortBy ?? SORT_BY;
+    return (
+      (await this.getLlamaSettings()).sortBy ?? SortBySettingsItem.defaultValue
+    );
   }
 
   /**
@@ -244,7 +251,10 @@ export class LlamaSettingsManager {
    * @returns `true` if server URLs should be shown
    */
   async resolveShowServerUrls(): Promise<boolean> {
-    return (await this.getLlamaSettings()).showServerUrls ?? SHOW_SERVER_URLS;
+    return (
+      (await this.getLlamaSettings()).showServerUrls ??
+      ShowServerUrlsSettingsItem.defaultValue
+    );
   }
 
   /**

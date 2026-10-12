@@ -1,4 +1,6 @@
-import { POLLING_INTERVAL } from "../constants";
+// layering trade-off: api client depends on settings/items to get the shared
+// polling interval default — avoids duplicating the value across modules.
+import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
 
 /**
  * Error thrown by the API client when the server rejects a request.
@@ -18,7 +20,7 @@ export class ApiError extends Error {
  * tick always reaches the server while multiple reads within one tick
  * (fan-outs like `toProviderConfig`, concurrent model polls) do not.
  */
-const CACHE_TTL = POLLING_INTERVAL / 2;
+const CACHE_TTL = PollingIntervalSettingsItem.defaultValue / 2;
 
 /**
  * HTTP client for llama-server with GET caching and request deduplication.

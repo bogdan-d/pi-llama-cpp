@@ -19,9 +19,10 @@ export interface ValidationResult {
  * - `values` — possible values (for dropdowns)
  * - `format(config)` — reads current value → string
  * - `setConfig(config, value)` — validates and returns partial config
- * - `getDefault()` — returns the default value
+ * - `defaultValue` — static getter returning the default value (defined in each subclass)
  */
 export abstract class SettingsItem<T = unknown> {
+  /** @internal */ protected _type!: T;
   abstract readonly id: keyof LlamaSettings & string;
   abstract readonly label: string;
   abstract readonly description: string;
@@ -40,6 +41,6 @@ export abstract class SettingsItem<T = unknown> {
 
   /**
    * Returns the default value for this setting.
+   * Each subclass defines its own `static get defaultValue()`.
    */
-  abstract getDefault(): T;
 }

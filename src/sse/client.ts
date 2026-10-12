@@ -1,4 +1,6 @@
-import { POLLING_INTERVAL } from "../constants";
+// layering trade-off: sse client depends on settings/items to get the shared
+// polling interval default — avoids duplicating the value across modules.
+import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
 import { openSSEStream } from "./fetch";
 import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 
@@ -74,7 +76,7 @@ export class SSEClient {
         if (this.disposed || abortController.signal.aborted) return false;
         this.notifyConnectFailed();
         this.reconnecting = true;
-        await this.delay(POLLING_INTERVAL);
+        await this.delay(PollingIntervalSettingsItem.defaultValue);
         continue;
       }
 
@@ -86,7 +88,7 @@ export class SSEClient {
       if (this.disposed || abortController.signal.aborted) return false;
       // Stream ended (server closed or network error): reconnect
       this.reconnecting = true;
-      await this.delay(POLLING_INTERVAL);
+      await this.delay(PollingIntervalSettingsItem.defaultValue);
     }
 
     return false;

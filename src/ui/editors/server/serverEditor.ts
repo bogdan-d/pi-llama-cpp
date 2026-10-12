@@ -1,6 +1,6 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
-import { SERVER_TIMEOUT } from "../../../constants";
+import { ServerTimeoutSettingsItem } from "../../../settings/items/server-timeout";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { LlamaSettingsManager } from "../../../managers/settings";
@@ -78,7 +78,8 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
 
   protected override async buildSettingsList(): Promise<SettingsList> {
     const builder = new ServerItemBuilder(this.dialogs);
-    const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
+    const serverTimeout =
+      this.options.serverTimeout ?? ServerTimeoutSettingsItem.defaultValue;
     const probes = await Promise.all(
       this.options.servers.map(async (server) => {
         const apiKey = (await this.options.authResolver?.(server)) ?? "";
@@ -182,7 +183,8 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     const ui = this.options.ui;
     if (!ui) return;
 
-    const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
+    const serverTimeout =
+      this.options.serverTimeout ?? ServerTimeoutSettingsItem.defaultValue;
     const apiKey = (await this.options.authResolver?.(server)) ?? "";
 
     if (
