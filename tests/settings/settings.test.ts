@@ -12,9 +12,12 @@ import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
 import {
   createSettingsManager,
-  type LlamaSettingsManager,
+  LlamaSettingsManager,
 } from "../../src/managers/settings";
 import { Server } from "../../src/server";
+import { CredentialResolver } from "../../src/utils/credentialResolver";
+import { SettingsStore } from "../../src/utils/settingsStore";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 
 let manager: LlamaSettingsManager;
 
@@ -691,11 +694,16 @@ describe("setLlamaSettings", () => {
     });
   });
 
-  it("should still construct the manager without arguments", async () => {
-    const { LlamaSettingsManager } =
-      await import("../../src/managers/settings");
-
-    expect(() => new LlamaSettingsManager()).not.toThrow();
+  it("should construct the manager with all collaborators injected", () => {
+    expect(
+      () =>
+        new LlamaSettingsManager(
+          SettingsManager.create(process.cwd()),
+          new SettingsStore("/fake/agent/dir/settings.json"),
+          new SettingsStore("/fake/project/.pi/settings.json"),
+          new CredentialResolver(),
+        ),
+    ).not.toThrow();
   });
 });
 

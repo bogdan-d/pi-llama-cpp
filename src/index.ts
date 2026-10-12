@@ -1,8 +1,9 @@
 import {
   type BeforeProviderRequestEvent,
-  type ExtensionAPI,
+  ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
+  SettingsManager,
   type SessionBeforeSwitchEvent,
   type SessionStartEvent,
 } from "@earendil-works/pi-coding-agent";
@@ -10,11 +11,13 @@ import { PROVIDER_NAME } from "./constants";
 import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
+import { LlamaSettingsManager } from "./managers/settings";
 import { ServerManager } from "./managers/server";
-import { createSettingsManager } from "./managers/settings";
 
 export default async function (pi: ExtensionAPI) {
-  const settings = createSettingsManager();
+  const settings = new LlamaSettingsManager(
+    SettingsManager.create(process.cwd()),
+  );
   const serverManager = new ServerManager(settings);
   const eventManager = new EventManager(serverManager, settings);
   const commandManager = new CommandManager(

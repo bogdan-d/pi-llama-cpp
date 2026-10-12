@@ -31,12 +31,24 @@ import { ServerUrl } from "../utils/urls";
 import { SettingsStore } from "../utils/settingsStore";
 
 export class LlamaSettingsManager {
-  private settingsManager = SettingsManager.create(process.cwd());
-
-  private globalStore = new SettingsStore(join(getAgentDir(), "settings.json"));
-  private projectStore = new SettingsStore(
-    join(process.cwd(), ".pi", "settings.json"),
-  );
+  /**
+   * Creates a new LlamaSettingsManager.
+   *
+   * @param settingsManager - Pi SDK settings manager (in-memory merged view)
+   * @param globalStore - Store for the global `settings.json` file.
+   * @param projectStore - Store for the project `.pi/settings.json` file.
+   * @param credentialResolver - Resolves API keys from credential values.
+   */
+  constructor(
+    private readonly settingsManager: SettingsManager,
+    private readonly globalStore: SettingsStore = new SettingsStore(
+      join(getAgentDir(), "settings.json"),
+    ),
+    private readonly projectStore: SettingsStore = new SettingsStore(
+      join(process.cwd(), ".pi", "settings.json"),
+    ),
+    private readonly credentialResolver: CredentialResolver = new CredentialResolver(),
+  ) {}
 
   /**
    * Check if project settings file exists in the current working directory.
@@ -49,9 +61,6 @@ export class LlamaSettingsManager {
       return false;
     }
   }
-
-  /** Delegates credential key resolution (see `utils/credentialResolver`). */
-  private credentialResolver = new CredentialResolver();
 
   /** Warnings collected during URL resolution (dropped invalid entries). */
   private warnings: string[] = [];
@@ -209,7 +218,7 @@ export class LlamaSettingsManager {
 
   /**
    * Resolves API key for the provider ID using Pi's stored credentials.
-   * Delegates to `CredentialResolver` for key format handling.
+   * Delegates to the injected credential resolver for key format handling.
    *
    * @param providerId The provider ID
    * @returns The API key to use for the provider
@@ -376,7 +385,8 @@ export class LlamaSettingsManager {
 
 /**
  * Creates a new LlamaSettingsManager instance.
+ * Single wiring point for the extension's default collaborators.
  */
 export function createSettingsManager(): LlamaSettingsManager {
-  return new LlamaSettingsManager();
+  return new LlamaSettingsManager(SettingsManager.create(process.cwd()));
 }
