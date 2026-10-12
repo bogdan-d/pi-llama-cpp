@@ -100,7 +100,7 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
       }
     ],
     "reactToModelSelect": true,
-    "autoloadOnMessage": false,
+    "autoloadOnMessage": true,
     "sortBy": "asc",
     "pollingTimeout": 60000,
     "serverTimeout": 1000
@@ -125,7 +125,7 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 | Option               | Type    | Default | Description                                                   |
 | -------------------- | ------- | ------- | ------------------------------------------------------------- |
 | `reactToModelSelect` | boolean | `true`  | Load the model when you switch via Pi's model picker.         |
-| `autoloadOnMessage`  | boolean | `false` | Automatically load an unloaded model before sending a message |
+| `autoloadOnMessage`  | boolean | `true`  | Automatically load an unloaded model before sending a message |
 | `sortBy`             | string  | `"asc"` | Sort order for models (see below)                             |
 | `pollingInterval`    | number  | `500`   | Time (ms) between status checks during model load/unload      |
 | `pollingTimeout`     | number  | `60000` | Max time (ms) to wait for model loading before giving up      |

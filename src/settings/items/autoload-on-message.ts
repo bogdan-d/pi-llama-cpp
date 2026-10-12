@@ -9,7 +9,7 @@ export class AutoloadOnMessageSettingsItem extends SettingsItem<boolean> {
   readonly values = ["on", "off"];
 
   static get defaultValue(): boolean {
-    return false;
+    return true;
   }
 
   format(config: LlamaSettings): string {

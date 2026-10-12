@@ -114,7 +114,7 @@ export interface LlamaSettings {
   reactToModelSelect?: boolean;
   /**
    * Whether to auto-load models when a message is sent.
-   * @default false
+   * @default true
    */
   autoloadOnMessage?: boolean;
   /**

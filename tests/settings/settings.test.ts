@@ -254,10 +254,10 @@ describe("reactToModelSelect and autoloadOnMessage fallbacks", () => {
     expect(result).toBe(true);
   });
 
-  it("should return false when autoloadOnMessage is not set", async () => {
+  it("should return true when autoloadOnMessage is not set", async () => {
     const result = await manager.resolveAutoloadOnMessage();
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
   it("should return 'asc' when sortBy is not set", async () => {
