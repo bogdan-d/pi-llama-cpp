@@ -24,9 +24,8 @@ beforeEach(() => {
   initTheme();
   vi.clearAllMocks();
   mockRpc.mockResolvedValue({ data: [] });
-  // Mock health checks and auth probes to return immediately
+  // Mock health checks to return immediately
   vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
-  vi.spyOn(ServerDisplay, "authEmoji").mockResolvedValue("");
 });
 
 /**

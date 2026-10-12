@@ -34,6 +34,10 @@ export interface SettingsEditorOptions {
  * Reads from `LlamaSettingsManager` for the current config and writes
  * via `setLlamaSetting()`; write errors are notified and leave the
  * dialog open with values unchanged.
+ *
+ * Boolean and sort changes apply immediately; timeout changes
+ * (`pollingInterval`, `pollingTimeout`, `serverTimeout`) take effect
+ * on the next model load.
  */
 export class SettingsEditor implements Component, Focusable {
   private settingsList: SettingsList | null = null;

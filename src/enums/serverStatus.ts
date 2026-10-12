@@ -3,4 +3,5 @@ export enum ServerStatus {
   READY = "ready",
   TIMEOUT = "timeout",
   UNREACHABLE = "unreachable",
+  UNAUTHORIZED = "unauthorized",
 }

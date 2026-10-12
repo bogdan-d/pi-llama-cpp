@@ -19,10 +19,22 @@ afterEach(() => {
 });
 
 describe("checkServerHealth", () => {
-  it("should return READY when the payload status is ok", async () => {
-    stubFetch(async () => ({ ok: true, json: async () => ({ status: "ok" }) }));
+  it("should return READY when health and auth succeed", async () => {
+    stubFetch(async (url: string) => {
+      if (url.includes("/health")) return okResponse();
+      return { ok: true, status: 200 };
+    });
 
     expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.READY);
+  });
+
+  it("should return UNAUTHORIZED when health succeeds but auth returns 401", async () => {
+    stubFetch(async (url: string) => {
+      if (url.includes("/health")) return okResponse();
+      return { ok: false, status: 401 };
+    });
+
+    expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.UNAUTHORIZED);
   });
 
   it("should return UNREACHABLE when the payload status is not ok", async () => {
@@ -58,7 +70,7 @@ describe("checkServerHealth", () => {
     expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.UNREACHABLE);
   });
 
-  it("should return TIMEOUT when the fetch aborts with TimeoutError", async () => {
+  it("should return TIMEOUT when the health fetch aborts with TimeoutError", async () => {
     stubFetch(async () => {
       throw new DOMException("The operation timed out.", "TimeoutError");
     });
@@ -66,7 +78,7 @@ describe("checkServerHealth", () => {
     expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.TIMEOUT);
   });
 
-  it("should return TIMEOUT when the fetch aborts with AbortError", async () => {
+  it("should return TIMEOUT when the health fetch aborts with AbortError", async () => {
     // Some runtimes surface the timeout as a plain AbortError
     stubFetch(async () => {
       throw new DOMException("The user aborted a request.", "AbortError");
@@ -112,5 +124,35 @@ describe("checkServerHealth", () => {
     await checkServerHealth(URL_, 1000);
 
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toBeUndefined();
+  });
+
+  it("should probe /v1/models for auth when health succeeds", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/health")) return okResponse();
+      return { ok: true, status: 200 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await checkServerHealth(URL_, 1000);
+
+    expect(fetchMock).toHaveBeenCalledWith(`${URL_}/v1/models`, {
+      signal: expect.any(AbortSignal),
+      headers: undefined,
+    });
+  });
+
+  it("should send the API key on the auth probe when provided", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/health")) return okResponse();
+      return { ok: true, status: 200 };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await checkServerHealth(URL_, 1000, "secret-key");
+
+    expect(fetchMock).toHaveBeenCalledWith(`${URL_}/v1/models`, {
+      signal: expect.any(AbortSignal),
+      headers: { Authorization: "Bearer secret-key" },
+    });
   });
 });

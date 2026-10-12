@@ -1,8 +1,10 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
 import { SERVER_TIMEOUT } from "../../../constants";
+import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { LlamaSettingsManager } from "../../../managers/settings";
+import { checkServerHealth } from "../../../utils/health";
 import { ServerIds } from "../../../utils/serverIds";
 import { TITLES, authRequiredMessage } from "../../strings";
 import type { ServerSettingsListOptions } from "../editorOptions";
@@ -77,16 +79,10 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
   protected override async buildSettingsList(): Promise<SettingsList> {
     const builder = new ServerItemBuilder(this.dialogs);
     const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
-    // Run auth + health probes in parallel; ⛔ wins if auth fails,
-    // otherwise fall back to the health emoji.
     const probes = await Promise.all(
       this.options.servers.map(async (server) => {
         const apiKey = (await this.options.authResolver?.(server)) ?? "";
-        const [authEmoji, healthEmoji] = await Promise.all([
-          ServerDisplay.authEmoji(server.url, apiKey, serverTimeout),
-          ServerDisplay.healthEmoji(server.url, serverTimeout),
-        ]);
-        return authEmoji || healthEmoji;
+        return ServerDisplay.healthEmoji(server.url, serverTimeout, apiKey);
       }),
     );
     const items: SettingItem[] = this.options.servers.map((server, i) =>
@@ -189,7 +185,10 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     const serverTimeout = this.options.serverTimeout ?? SERVER_TIMEOUT;
     const apiKey = (await this.options.authResolver?.(server)) ?? "";
 
-    if (await ServerDisplay.requiresApiKey(server.url, apiKey, serverTimeout)) {
+    if (
+      (await checkServerHealth(server.url, serverTimeout, apiKey)) ===
+      ServerStatus.UNAUTHORIZED
+    ) {
       const providerId = ServerIds.resolve(server.url, server.id);
       ui.notify(authRequiredMessage(server.url, providerId), "warning");
     }

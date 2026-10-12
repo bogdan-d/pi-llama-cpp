@@ -89,7 +89,9 @@ export class ServerManager {
   }
 
   /**
-   * Runs concurrent health checks and returns only healthy servers.
+   * Runs concurrent health checks and returns servers that can be
+   * registered (healthy or unauthorized — the latter is handled by
+   * `registerProvider` with an empty model list).
    *
    * @param timeout Maximum time to wait for each server
    * @returns Array of servers that passed the health check
@@ -104,7 +106,10 @@ export class ServerManager {
 
     const response: Server[] = [];
     for (const { server, status } of healthResults) {
-      if (status === ServerStatus.READY) {
+      if (
+        status === ServerStatus.READY ||
+        status === ServerStatus.UNAUTHORIZED
+      ) {
         response.push(server);
       } else if (status === ServerStatus.TIMEOUT) {
         const message = [
