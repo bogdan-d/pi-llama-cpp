@@ -52,7 +52,7 @@ export const checkServerHealth = async (
   }
 
   // Health OK — check auth
-  if (authResult.status === "fulfilled" && authResult.value === 401) {
+  if (authResult.status === "fulfilled" && !authResult.value) {
     return ServerStatus.UNAUTHORIZED;
   }
 
@@ -78,17 +78,18 @@ async function probeHealth(
 
 /**
  * Probes the `/v1/models` endpoint to check if authentication is required.
- * Returns the HTTP status code. Throws on timeout or network error.
+ * Returns `true` if auth succeeds (non-401), `false` otherwise.
+ * Throws on timeout or network error.
  */
 async function probeAuth(
   url: string,
   timeout: number,
   apiKey?: string,
-): Promise<number> {
+): Promise<boolean> {
   const response = await fetch(`${url}${ENDPOINT_PREFIX}/models`, {
     signal: AbortSignal.timeout(timeout),
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
   });
 
-  return response.status;
+  return response.status !== 401;
 }

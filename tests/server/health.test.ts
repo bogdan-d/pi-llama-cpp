@@ -28,7 +28,7 @@ describe("checkServerHealth", () => {
     expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.READY);
   });
 
-  it("should return UNAUTHORIZED when health succeeds but auth returns 401", async () => {
+  it("should return UNAUTHORIZED when health succeeds but auth fails", async () => {
     stubFetch(async (url: string) => {
       if (url.includes("/health")) return okResponse();
       return { ok: false, status: 401 };
@@ -154,5 +154,14 @@ describe("checkServerHealth", () => {
       signal: expect.any(AbortSignal),
       headers: { Authorization: "Bearer secret-key" },
     });
+  });
+
+  it("should treat any non-401 auth response as success", async () => {
+    stubFetch(async (url: string) => {
+      if (url.includes("/health")) return okResponse();
+      return { ok: true, status: 200 };
+    });
+
+    expect(await checkServerHealth(URL_, 1000)).toBe(ServerStatus.READY);
   });
 });
