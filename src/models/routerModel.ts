@@ -39,7 +39,7 @@ export class RouterModel extends BaseModel {
    * @returns The value
    */
   private extractFrom(arg: string): number | null {
-    const args = this.model.status!.args;
+    const args = this.model.status?.args;
     if (!args) return null;
 
     const ctxIdx = args.indexOf(arg);
