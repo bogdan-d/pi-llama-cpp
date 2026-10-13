@@ -24,22 +24,6 @@ import { SSEManager } from "./sse/manager";
 import { checkServerHealth } from "./utils/health";
 import { ServerIds } from "./utils/serverIds";
 
-/**
- * Optional constructor collaborators for {@link Server} — the seam tests use
- * to run the real Server against fake clients.
- *
- * Both are factories because their arguments only exist around construction:
- * the API key is (re-)resolved by the Server, and SSEManager needs its owner
- * (it reads the key and timeouts live through it). Factories must stay pure
- * functions of their arguments — `initialize()` re-invokes both on every scan
- * (the ApiClient rebuild picks up a fresh key, by design), so captured
- * per-server state would leak across re-scans.
- */
-export type ServerDeps = {
-  createApiClient?: (apiKey: string) => ApiClient;
-  createSSEManager?: (server: Server) => SSEManager;
-};
-
 export class Server {
   public readonly models: BaseModel[] = [];
   private apiClient: ApiClient;
@@ -48,14 +32,11 @@ export class Server {
   constructor(
     private readonly settings: LlamaSettingsManager,
     private readonly options: ServerOptions,
-    private readonly deps: ServerDeps = {},
   ) {
     // Eager client: `isReady` may run before `initialize()` (health probing
-    // in ServerManager), so no lazy fallback is needed. initialize()
-    // rebuilds the client to re-resolve the API key.
-    this.apiClient =
-      deps.createApiClient?.(this.apiKey) ??
-      new ApiClient(options.baseUrl, this.apiKey);
+    // in ServerManager), so no lazy fallback is needed. The key is resolved
+    // per request, so the client never needs rebuilding when it changes.
+    this.apiClient = new ApiClient(options.baseUrl, () => this.apiKey);
   }
 
   /** Base URL of this server endpoint. */
@@ -153,11 +134,8 @@ export class Server {
    * Clears the cache first so we always fetch fresh data.
    */
   async initialize() {
-    this.apiClient =
-      this.deps.createApiClient?.(this.apiKey) ??
-      new ApiClient(this.baseUrl, this.apiKey);
     this.sse?.disconnect();
-    this.sse = this.deps.createSSEManager?.(this) ?? new SSEManager(this);
+    this.sse = new SSEManager(this);
     const { data } = await this.fetchModels();
     const mode = await this.detectServerMode(data);
 

@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { LlamaSwapModel } from "../../src/models/llamaSwapModel";
-import { createMockServer, mockRpc } from "../mocks";
+import { createMockServer, installFetchStub, mockRpc } from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (

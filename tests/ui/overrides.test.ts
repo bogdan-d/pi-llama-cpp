@@ -8,10 +8,11 @@ import {
   OverrideFields,
   OverrideSummary,
 } from "../../src/ui/editors/override/fields";
-import { createMockServer, mockRpc } from "../mocks";
+import { createMockServer, installFetchStub, mockRpc } from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>

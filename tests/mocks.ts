@@ -1,7 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 import { defaultBaseUrl } from "./constants";
-import type { ApiClient } from "../src/api/client";
 import { API_KEY_PLACEHOLDER, THINKING_BUDGETS } from "../src/constants";
 import { AutoloadOnMessageSettingsItem } from "../src/settings/items/autoload-on-message";
 import { PollingIntervalSettingsItem } from "../src/settings/items/polling-interval";
@@ -16,7 +15,6 @@ import type { ModelOverride } from "../src/interfaces/settings";
 import type { LlamaSettingsManager } from "../src/managers/settings";
 import { BaseModel } from "../src/models/baseModel";
 import { Server } from "../src/server";
-import type { SSEManager } from "../src/sse/manager";
 
 /** Shared mock RPC — each test configures it */
 export const mockRpc = vi.fn();
@@ -58,32 +56,43 @@ export const makeSettingsStub = (
   }) as unknown as LlamaSettingsManager;
 
 /**
- * Fake `ApiClient`/`SSEManager` pair for injection via `ServerDeps`. The
- * ApiClient delegates every request to the shared `mockRpc`, keyed by the
- * endpoint path (and body for POSTs) — the same contract the old hand-rolled
- * mock server used, so tests keep configuring responses on `mockRpc`. The
- * SSEManager is inert: `disconnect` is a spy and `probeSSE` resolves false,
- * steering load flows onto the HTTP polling path.
+ * Installs a global `fetch` stub that routes every request into the shared
+ * `mockRpc`, keyed by the endpoint path + query (and parsed body for POSTs) —
+ * the same contract the old fake clients used, so tests keep configuring
+ * responses on `mockRpc`. Responses always come back as 200 JSON; SSE probes
+ * therefore see a non-event-stream content type and fall back to polling.
+ * Tests asserting raw fetch behavior (health classification, SSE streaming)
+ * install their own stub instead, as before.
  */
-export const createFakeClients = (): {
-  apiClient: ApiClient;
-  sseManager: SSEManager;
-} => {
-  const apiClient = {
-    get: (endpoint: string) => mockRpc(endpoint),
-    post: (endpoint: string, body?: Record<string, unknown>) =>
-      mockRpc(endpoint, body),
-    rawGet: (endpoint: string) => mockRpc(endpoint),
-    rawPost: (endpoint: string) => mockRpc(endpoint),
-    clearCache: vi.fn(),
-  } as unknown as ApiClient;
-  const sseManager = {
-    disconnect: vi.fn(),
-    probeSSE: vi.fn(async () => false),
-    subscribeToStatus: vi.fn(),
-    subscribeToProgress: vi.fn(() => () => {}),
-  } as unknown as SSEManager;
-  return { apiClient, sseManager };
+export const installFetchStub = (): void => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (
+        input: string | URL | Request,
+        init?: RequestInit,
+      ): Promise<Response> => {
+        const href =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        const { pathname, search } = new URL(href);
+        const endpoint = `${pathname}${search}`;
+        // Only pass the body argument when present, so call assertions like
+        // `toHaveBeenCalledWith("/v1/models")` match single-argument calls.
+        const data =
+          typeof init?.body === "string"
+            ? await mockRpc(endpoint, JSON.parse(init.body))
+            : await mockRpc(endpoint);
+        return new Response(JSON.stringify(data ?? {}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    ),
+  );
 };
 
 /**
@@ -152,20 +161,12 @@ export const createMockServer = (
     }),
   });
 
-  const { apiClient, sseManager } = createFakeClients();
-  const server = new Server(
-    settings,
-    {
-      baseUrl: baseUrl ?? defaultBaseUrl(),
-      customId,
-      customName,
-      overrides: modelOverrides,
-    },
-    {
-      createApiClient: () => apiClient,
-      createSSEManager: () => sseManager,
-    },
-  );
+  const server = new Server(settings, {
+    baseUrl: baseUrl ?? defaultBaseUrl(),
+    customId,
+    customName,
+    overrides: modelOverrides,
+  });
   if (models) server.models.push(...models);
   return Object.assign(server, members, {
     initialize: initialize ?? (async () => {}),

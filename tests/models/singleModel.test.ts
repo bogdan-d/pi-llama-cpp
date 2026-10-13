@@ -3,10 +3,11 @@ import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { SingleModel } from "../../src/models/singleModel";
-import { createMockServer, mockRpc } from "../mocks";
+import { createMockServer, installFetchStub, mockRpc } from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (extra: Partial<DataProperty> = {}): SingleModel =>

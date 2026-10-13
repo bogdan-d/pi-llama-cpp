@@ -6,7 +6,12 @@ import { ServerStatus } from "../../src/enums/serverStatus";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
 import type { LlamaSettingsManager } from "../../src/managers/settings";
 import { Server } from "../../src/server";
-import { createMockServer, makeSettingsStub, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  makeSettingsStub,
+  mockRpc,
+} from "../mocks";
 
 // Injected into every real Server below; fresh per test so per-case
 // overrides never leak. The Server constructor resolves the API key eagerly
@@ -15,6 +20,7 @@ let settings: LlamaSettingsManager;
 
 beforeEach(() => {
   mockRpc.mockClear();
+  installFetchStub();
   settings = makeSettingsStub();
 });
 

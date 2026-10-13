@@ -43,12 +43,15 @@ export class ApiClient {
   /**
    * Creates a new ApiClient.
    *
+   * The key is resolved per request via `getApiKey`, so a client built once
+   * picks up key changes (settings edits) without being rebuilt.
+   *
    * @param baseUrl The base URL of the llama-server
-   * @param apiKey The API key for authentication
+   * @param getApiKey Resolves the API key for authentication at request time
    */
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey: string,
+    private readonly getApiKey: () => string,
   ) {}
 
   /**
@@ -190,7 +193,7 @@ export class ApiClient {
         ...(method === "POST"
           ? { "Content-Type": "application/json" }
           : undefined),
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.getApiKey()}`,
       },
       ...(body ? { body: JSON.stringify(body) } : undefined),
     });

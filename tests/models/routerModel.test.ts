@@ -3,7 +3,7 @@ import { FALLBACK_CTX } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { RouterModel } from "../../src/models/routerModel";
-import { createMockServer, mockRpc } from "../mocks";
+import { createMockServer, installFetchStub, mockRpc } from "../mocks";
 
 // Helper to create a mock DataProperty
 const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({
@@ -19,6 +19,7 @@ const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({
 
 beforeEach(() => {
   mockRpc.mockClear();
+  installFetchStub();
 });
 
 describe("RouterModel context size (via toProviderConfig)", () => {
@@ -146,8 +147,12 @@ describe("RouterModel context size (via toProviderConfig)", () => {
   });
 
   it("should return n_ctx from meta when loaded", async () => {
-    mockRpc.mockResolvedValueOnce({ modalities: { vision: false } }); // capabilities: /props
-    mockRpc.mockResolvedValueOnce({ is_sleeping: false }); // status: /props
+    // Capabilities and status both read /props within one poll tick, so the
+    // ApiClient cache serves them the same response.
+    mockRpc.mockResolvedValueOnce({
+      modalities: { vision: false },
+      is_sleeping: false,
+    }); // /props (cached for capabilities + status)
     // super.getContextSize() -> fetchModels with meta.n_ctx
     mockRpc.mockResolvedValueOnce({
       data: [
