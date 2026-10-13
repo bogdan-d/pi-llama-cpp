@@ -1,17 +1,8 @@
-import { ApiKeyCredential, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import {
-  getAgentDir,
-  readStoredCredential,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  API_KEY_PLACEHOLDER,
-  LLAMA_SERVER_URL,
-  SETTINGS_KEY,
-  THINKING_BUDGETS,
-} from "../constants";
+import { LLAMA_SERVER_URL, SETTINGS_KEY, THINKING_BUDGETS } from "../constants";
 import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
 import { AutoloadOnMessageSettingsItem } from "../settings/items/autoload-on-message";
 import { PollingTimeoutSettingsItem } from "../settings/items/polling-timeout";
@@ -218,16 +209,14 @@ export class LlamaSettingsManager {
 
   /**
    * Resolves API key for the provider ID using Pi's stored credentials.
-   * Delegates to the injected credential resolver for key format handling.
+   * Delegates to the injected credential resolver, which owns the
+   * credential-store lookup and key format handling.
    *
    * @param providerId The provider ID
    * @returns The API key to use for the provider
    */
   resolveApiKey(providerId: string): string {
-    const credential = readStoredCredential(providerId) as ApiKeyCredential;
-    if (!credential?.key) return API_KEY_PLACEHOLDER;
-
-    return this.credentialResolver.resolve(credential.key, credential.env);
+    return this.credentialResolver.resolveForProvider(providerId);
   }
 
   /**
