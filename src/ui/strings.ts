@@ -133,6 +133,12 @@ export const HINTS = {
 } as const;
 
 /**
+ * Wraps one or more lines in the standard warning header.
+ */
+export const warnUser = (...lines: string[]): string =>
+  ["[pi-llama-cpp]", ...lines].join("\n");
+
+/**
  * Generates a warning message for servers that require an API key.
  * Centralized so both the runtime manager and the editor wizard use
  * identical wording.
@@ -141,8 +147,7 @@ export const authRequiredMessage = (
   baseUrl: string,
   providerId: string,
 ): string =>
-  [
-    "[pi-llama-cpp]",
+  warnUser(
     `Server at '${baseUrl}' requires a valid API key.`,
     `Configure the key via '/login ${providerId}' or in '${getAgentDir()}/auth.json'.`,
-  ].join("\n");
+  );

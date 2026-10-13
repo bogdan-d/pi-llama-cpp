@@ -8,7 +8,7 @@ import { ServerStatus } from "../enums/serverStatus";
 import type { SortBy } from "../interfaces/sortBy";
 import { BaseModel } from "../models/baseModel";
 import { Server } from "../server";
-import { authRequiredMessage } from "../ui/strings";
+import { authRequiredMessage, warnUser } from "../ui/strings";
 import type { SettingsService } from "../settings/settings";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
@@ -117,20 +117,20 @@ export class ServerManager {
       ) {
         response.push(server);
       } else if (status === ServerStatus.TIMEOUT) {
-        const message = [
-          "[pi-llama-cpp]",
-          `${PROVIDER_NAME} server initialization for '${server.baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
-          "Run `/models` to retry without timeout and see all models.",
-        ].join("\n");
-        this.warnings.push(message);
+        this.warnings.push(
+          warnUser(
+            `${PROVIDER_NAME} server initialization for '${server.baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
+            "Run `/models` to retry without timeout and see all models.",
+          ),
+        );
         this.failedUrls.push(server.baseUrl);
       } else {
-        const message = [
-          "[pi-llama-cpp]",
-          `${PROVIDER_NAME} server at '${server.baseUrl}' is unreachable.`,
-          "Check the URL and try again. Run `/models` to retry.",
-        ].join("\n");
-        this.warnings.push(message);
+        this.warnings.push(
+          warnUser(
+            `${PROVIDER_NAME} server at '${server.baseUrl}' is unreachable.`,
+            "Check the URL and try again. Run `/models` to retry.",
+          ),
+        );
         this.failedUrls.push(server.baseUrl);
       }
     }
