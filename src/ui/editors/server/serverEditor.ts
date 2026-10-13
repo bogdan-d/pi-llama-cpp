@@ -4,7 +4,7 @@ import { ServerTimeoutSettingsItem } from "../../../settings/items/server-timeou
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { SettingsService } from "../../../settings/settings";
-import { checkServerHealth } from "../../../utils/health";
+import { Server } from "../../../server";
 import { ServerIds } from "../../../utils/serverIds";
 import { TITLES, authRequiredMessage } from "../../strings";
 import type { ServerSettingsListOptions } from "../editorOptions";
@@ -188,7 +188,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
     const apiKey = (await this.options.authResolver?.(server)) ?? "";
 
     if (
-      (await checkServerHealth(server.url, serverTimeout, apiKey)) ===
+      (await Server.check(server.url, serverTimeout, apiKey)) ===
       ServerStatus.UNAUTHORIZED
     ) {
       const providerId = ServerIds.resolve(server.url, server.id);

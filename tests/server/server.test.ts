@@ -7,6 +7,7 @@ import { Server } from "../../src/server";
 import {
   createMockServer,
   installFetchStub,
+  makeResolverStub,
   makeSettingsStub,
   mockRpc,
 } from "../mocks";
@@ -218,9 +219,8 @@ describe("Server postRequest", () => {
 });
 
 describe("Server isReady", () => {
-  // `isReady` delegates to the shared health probe (`utils/health`), which
-  // uses plain `fetch` instead of the ApiClient — stub it per test.
-  const stubFetch = (impl: () => Promise<unknown>) => {
+  // `isReady` probes through the server's ApiClient — stub raw `fetch` per test.
+  const stubFetch = (impl: (url: string) => Promise<unknown>) => {
     vi.stubGlobal("fetch", vi.fn(impl));
   };
 
@@ -228,13 +228,26 @@ describe("Server isReady", () => {
     vi.unstubAllGlobals();
   });
 
-  it("should return READY when health status is ok", async () => {
-    stubFetch(async () => ({ ok: true, json: async () => ({ status: "ok" }) }));
+  it("should return READY when health and auth succeed", async () => {
+    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({}) }));
 
     const server = createMockServer();
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.READY);
+  });
+
+  it("should return UNAUTHORIZED when auth fails", async () => {
+    stubFetch(async (url: string) =>
+      url.includes("/health")
+        ? { ok: true, status: 200, json: async () => ({}) }
+        : { ok: false, status: 401, json: async () => ({}) },
+    );
+
+    const server = createMockServer();
+    const status = await server.isReady(1000);
+
+    expect(status).toBe(ServerStatus.UNAUTHORIZED);
   });
 
   it("should return UNREACHABLE when health check fails", async () => {
@@ -249,7 +262,7 @@ describe("Server isReady", () => {
   });
 
   it("should return UNREACHABLE when health status is not ok", async () => {
-    stubFetch(async () => ({ json: async () => ({ status: "error" }) }));
+    stubFetch(async () => ({ ok: false, status: 503, json: async () => ({}) }));
 
     const server = createMockServer();
     const status = await server.isReady(1000);
@@ -266,5 +279,27 @@ describe("Server isReady", () => {
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.TIMEOUT);
+  });
+
+  it("should perform exactly one /v1/models call across isReady + initialize", async () => {
+    // Regression: the auth probe warms the ApiClient cache, so the models
+    // fetch during `initialize()` must be served from cache, not the network.
+    installFetchStub();
+    mockRpc.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/v1/models") return { data: [{ id: "m1" }] };
+      return {}; // /health → 200, /props → SINGLE mode
+    });
+
+    const server = new Server(makeResolverStub(), {
+      baseUrl: "http://127.0.0.1:9931",
+    });
+    await server.isReady(1000);
+    await server.initialize();
+
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const modelsCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith("/v1/models"),
+    ).length;
+    expect(modelsCalls).toBe(1);
   });
 });

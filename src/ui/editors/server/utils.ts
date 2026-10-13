@@ -1,6 +1,6 @@
+import { Server } from "../../../server";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
-import { checkServerHealth } from "../../../utils/health";
 import { ServerIds } from "../../../utils/serverIds";
 
 /**
@@ -23,8 +23,8 @@ export class ServerDisplay {
   /**
    * Checks the health of a server and returns the corresponding emoji.
    *
-   * Delegates the probe/classification to the shared `checkServerHealth`
-   * (`utils/health`) — this wrapper only maps the status to its icon.
+   * Delegates the probe/classification to `Server.check` — this wrapper
+   * only maps the status to its icon.
    *
    * @param url - The server URL to check
    * @param timeout - Maximum time (ms) for the health check
@@ -36,7 +36,7 @@ export class ServerDisplay {
     timeout: number,
     apiKey?: string,
   ): Promise<string> {
-    return SERVER_STATUS_ICONS[await checkServerHealth(url, timeout, apiKey)];
+    return SERVER_STATUS_ICONS[await Server.check(url, timeout, apiKey)];
   }
 }
 

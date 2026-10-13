@@ -1,4 +1,4 @@
-import { ApiClient } from "./api/client";
+import { ApiClient, ApiError } from "./api/client";
 import {
   API_KEY_PLACEHOLDER,
   ENDPOINT_PREFIX,
@@ -23,9 +23,13 @@ import { LlamaSwapModel } from "./models/llamaSwapModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
-import { checkServerHealth } from "./utils/health";
 import { detectMode } from "./utils/detectMode";
 import { ServerIds } from "./utils/serverIds";
+
+/** True when the error is a fetch timeout (either AbortSignal error name). */
+const isTimeout = (err: unknown): boolean =>
+  err instanceof Error &&
+  (err.name === "TimeoutError" || err.name === "AbortError");
 
 export class Server {
   public readonly models: BaseModel[] = [];
@@ -133,16 +137,81 @@ export class Server {
   /**
    * Checks if the server is ready, with a timeout.
    *
-   * Delegates to the shared health probe (`utils/health`) — bypasses the
-   * `ApiClient` on purpose: each caller probes once per scan, so the
-   * client's cache/dedup would be dead weight, and a plain `fetch` with
-   * `AbortSignal.timeout` actually cancels the request on timeout.
+   * Runs the health and auth probes concurrently through this server's
+   * `ApiClient` — the auth probe warms the cache, so a subsequent
+   * `initialize()` gets `/v1/models` from it instead of the network
+   * (one network call per server per scan).
    *
    * @param timeout Maximum time to wait for the health check
    * @returns The server status
    */
   async isReady(timeout: number): Promise<ServerStatus> {
-    return checkServerHealth(this.baseUrl, timeout, this.apiKey);
+    return Server.probe(timeout, this.apiClient);
+  }
+
+  /**
+   * Stateless health check for callers without a `Server` instance (editor
+   * UIs probing draft URLs). Same classification as {@link isReady}, but
+   * with a throwaway `ApiClient` — nothing is cached.
+   *
+   * @param url The bare origin of the llama-server
+   * @param timeout Maximum time (ms) for both probes
+   * @param apiKey Optional API key, sent as a Bearer token
+   * @returns The classified server status
+   */
+  static async check(
+    url: string,
+    timeout: number,
+    apiKey?: string,
+  ): Promise<ServerStatus> {
+    return Server.probe(timeout, new ApiClient(url, () => apiKey ?? ""));
+  }
+
+  /**
+   * Shared probe: classifies health (`/health`, status-code based) and auth
+   * (`/v1/models`) concurrently.
+   *
+   * - Health fails (timeout)  → `TIMEOUT`
+   * - Health fails (other)    → `UNREACHABLE`
+   * - Health 200 + auth 401   → `UNAUTHORIZED`
+   * - Health 200 + auth fails → `TIMEOUT` / `UNREACHABLE`
+   * - Both OK                 → `READY`
+   *
+   * @param timeout Maximum time (ms) for both probes
+   * @param client The client to probe with
+   * @returns The classified server status
+   */
+  private static async probe(
+    timeout: number,
+    client: ApiClient,
+  ): Promise<ServerStatus> {
+    const [health, auth] = await Promise.allSettled([
+      client.probeStatus("/health", timeout),
+      client.get(`${ENDPOINT_PREFIX}/models`, timeout),
+    ]);
+
+    if (health.status === "rejected") {
+      return isTimeout(health.reason)
+        ? ServerStatus.TIMEOUT
+        : ServerStatus.UNREACHABLE;
+    }
+    if (health.value !== 200) {
+      return ServerStatus.UNREACHABLE;
+    }
+
+    if (auth.status === "rejected") {
+      if (
+        auth.reason instanceof ApiError &&
+        auth.reason.type === "authentication"
+      ) {
+        return ServerStatus.UNAUTHORIZED;
+      }
+      return isTimeout(auth.reason)
+        ? ServerStatus.TIMEOUT
+        : ServerStatus.UNREACHABLE;
+    }
+
+    return ServerStatus.READY;
   }
 
   /**
