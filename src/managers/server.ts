@@ -66,6 +66,9 @@ export class ServerManager {
       fresh.push(server);
     }
 
+    // Surface warnings from URL parsing (invalid entries, deprecations)
+    this.warnings.push(...this.settings.takeWarnings());
+
     // Unregister providers that disappeared (removed or edited away);
     // `seen` tracks all kept providerIds, so we skip those still present.
     for (const old of this.servers) {
