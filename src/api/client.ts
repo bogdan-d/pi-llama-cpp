@@ -16,12 +16,6 @@ export class ApiError extends Error {
 }
 
 /**
- * How long GET responses stay cached: half the polling interval, so a poll
- * tick always reaches the server while multiple reads within one tick
- * (fan-outs like `toProviderConfig`, concurrent model polls) do not.
- */
-const CACHE_TTL = PollingIntervalSettingsItem.defaultValue / 2;
-
 /**
  * HTTP client for llama-server with GET caching and request deduplication.
  *
@@ -30,6 +24,11 @@ const CACHE_TTL = PollingIntervalSettingsItem.defaultValue / 2;
  * - the in-flight map absorbs simultaneous bursts: concurrent callers for the
  *   same key share one request's promise.
  *
+ * The cache TTL is derived per request from the live polling interval (half
+ * of it), so cache granularity always tracks the user's setting: a fast
+ * interval still yields fresh responses on every poll tick, while a slow
+ * one keeps absorbing time-spaced repeats.
+ *
  * POST requests are deduplicated but never cached — they are not idempotent
  * reads, and the only caller (`Server.postRequest()`) clears the cache around
  * them. The dedup matters: independent load triggers (command, auto-load,
@@ -37,7 +36,7 @@ const CACHE_TTL = PollingIntervalSettingsItem.defaultValue / 2;
  * into one server call avoids load-state glitches.
  */
 export class ApiClient {
-  private cache = new Map<string, { data: unknown; timestamp: number }>();
+  private cache = new Map<string, { data: unknown; expiresAt: number }>();
   private inflight = new Map<string, Promise<unknown>>();
 
   /**
@@ -48,10 +47,14 @@ export class ApiClient {
    *
    * @param baseUrl The base URL of the llama-server
    * @param getApiKey Resolves the API key for authentication at request time
+   * @param getPollingInterval Resolves the current polling interval, which
+   *   the cache TTL is derived from (half of it) at each GET request
    */
   constructor(
     private readonly baseUrl: string,
     private readonly getApiKey: () => string,
+    private readonly getPollingInterval: () => Promise<number> = async () =>
+      PollingIntervalSettingsItem.defaultValue,
   ) {}
 
   /**
@@ -66,8 +69,9 @@ export class ApiClient {
     if (cached !== undefined) return cached;
 
     return this.dedupe(endpoint, async () => {
+      const ttl = (await this.getPollingInterval()) / 2;
       const data = await this.do_get<T>(endpoint, timeout);
-      this.cacheSet(endpoint, data);
+      this.cacheSet(endpoint, data, ttl);
       return data;
     });
   }
@@ -139,7 +143,7 @@ export class ApiClient {
   private cacheGet<T>(key: string): T | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
-    if (Date.now() - entry.timestamp > CACHE_TTL) {
+    if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
       return undefined;
     }
@@ -147,10 +151,14 @@ export class ApiClient {
   }
 
   /**
-   * Stores a GET response in the cache with the current timestamp.
+   * Stores a GET response in the cache with a per-entry expiry.
+   *
+   * @param key The cache key
+   * @param data The response data
+   * @param ttl How long the entry stays fresh, in ms
    */
-  private cacheSet(key: string, data: unknown): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
+  private cacheSet(key: string, data: unknown, ttl: number): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + ttl });
   }
 
   /**

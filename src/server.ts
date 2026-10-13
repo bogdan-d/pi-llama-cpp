@@ -39,7 +39,11 @@ export class Server {
     // Eager client: `isReady` may run before `initialize()` (health probing
     // in ServerManager), so no lazy fallback is needed. The key is resolved
     // per request, so the client never needs rebuilding when it changes.
-    this.apiClient = new ApiClient(options.baseUrl, () => this.apiKey);
+    this.apiClient = new ApiClient(
+      options.baseUrl,
+      () => this.apiKey,
+      () => this.resolver.resolvePollingInterval(),
+    );
   }
 
   /** Base URL of this server endpoint. */

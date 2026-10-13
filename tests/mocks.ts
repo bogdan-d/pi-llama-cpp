@@ -41,12 +41,8 @@ export const makeSettingsStub = (
     resolveServerTimeout: vi.fn(
       async () => ServerTimeoutSettingsItem.defaultValue,
     ),
-    resolvePollingInterval: vi.fn(
-      async () => PollingIntervalSettingsItem.defaultValue,
-    ),
-    resolvePollingTimeout: vi.fn(
-      async () => PollingTimeoutSettingsItem.defaultValue,
-    ),
+    resolvePollingInterval: vi.fn(async () => 10),
+    resolvePollingTimeout: vi.fn(async () => 5000),
     resolveEnableSSE: vi.fn(async () => true),
     resolveServerConfigs: vi.fn(async () => []),
     resolveSortBy: vi.fn(async () => SortBySettingsItem.defaultValue),
@@ -79,12 +75,8 @@ export const makeResolverStub = (
     resolveServerTimeout: vi.fn(
       async () => ServerTimeoutSettingsItem.defaultValue,
     ),
-    resolvePollingInterval: vi.fn(
-      async () => PollingIntervalSettingsItem.defaultValue,
-    ),
-    resolvePollingTimeout: vi.fn(
-      async () => PollingTimeoutSettingsItem.defaultValue,
-    ),
+    resolvePollingInterval: vi.fn(async () => 10),
+    resolvePollingTimeout: vi.fn(async () => 5000),
     resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
     resolveEnableSSE: vi.fn(async () => true),
     ...overrides,
