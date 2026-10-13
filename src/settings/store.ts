@@ -6,10 +6,15 @@ import { readFile, rename, writeFile } from "node:fs/promises";
  * SettingsManager.
  */
 export class SettingsStore {
+  constructor(private readonly path: string) {}
+
+  /** Exposes the resolved file path for callers that need to inspect it. */
+  get projectPath(): string {
+    return this.path;
+  }
+
   /** Serializes whole-file read-modify-write cycles (last write wins). */
   private writeQueue: Promise<void> = Promise.resolve();
-
-  constructor(private readonly path: string) {}
 
   /**
    * Reads and parses the whole settings file.

@@ -13,7 +13,7 @@ import { Mode } from "../src/enums/mode";
 import { Status } from "../src/enums/status";
 import type { ModelOverride } from "../src/interfaces/settings";
 import type { ServerSettingsResolver } from "../src/interfaces/server";
-import type { LlamaSettingsManager } from "../src/managers/settings";
+import type { SettingsService } from "../src/settings/settings";
 import { BaseModel } from "../src/models/baseModel";
 import { Server } from "../src/server";
 
@@ -21,15 +21,15 @@ import { Server } from "../src/server";
 export const mockRpc = vi.fn();
 
 /**
- * Hand-made stub of `LlamaSettingsManager` for constructor injection —
+ * Hand-made stub of `SettingsService` for constructor injection —
  * replaces whole-module `vi.mock` blocks and per-case `vi.spyOn` on the
  * real singleton. Defaults give every consumer-used member a benign value;
  * a case that cares passes just that member as an override. The single
  * `as unknown as` cast lives here so test bodies stay cast-free.
  */
 export const makeSettingsStub = (
-  overrides: Partial<LlamaSettingsManager> = {},
-): LlamaSettingsManager =>
+  overrides: Partial<SettingsService> = {},
+): SettingsService =>
   ({
     getLlamaSettings: vi.fn(async () => ({})),
     getLlamaServers: vi.fn(async () => []),
@@ -65,7 +65,7 @@ export const makeSettingsStub = (
     takeWarnings: vi.fn((): string[] => []),
     setLlamaSettings: vi.fn(() => Promise.resolve()),
     ...overrides,
-  }) as unknown as LlamaSettingsManager;
+  }) as unknown as SettingsService;
 
 /**
  * Stub of the {@link ServerSettingsResolver} interface `Server`,

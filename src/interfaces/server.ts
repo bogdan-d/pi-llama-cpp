@@ -2,9 +2,9 @@ import type { ModelOverride } from "./settings";
 
 /**
  * Minimal settings resolver for {@link Server}, `SSEManager`, and
- * `BaseModel`. Decouples all components from `LlamaSettingsManager` —
- * consumers depend on this interface, not on the settings manager.
- * Implemented by `LlamaSettingsManager`.
+ * `BaseModel`. Decouples all components from `SettingsService` —
+ * consumers depend on this interface, not on the settings service.
+ * Implemented by `SettingsService`.
  */
 export interface ServerSettingsResolver {
   /**

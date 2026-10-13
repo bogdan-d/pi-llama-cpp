@@ -6,7 +6,7 @@ import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
 import { EventManager } from "../../src/managers/events";
 import { ServerManager } from "../../src/managers/server";
-import type { LlamaSettingsManager } from "../../src/managers/settings";
+import type { SettingsService } from "../../src/settings/settings";
 import { SETTINGS_ITEMS } from "../../src/settings/defaults";
 import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
@@ -38,7 +38,7 @@ afterEach(() => {
  */
 const createMockEventManager = (
   serverManager: ServerManager,
-  settingsStub: LlamaSettingsManager,
+  settingsStub: SettingsService,
 ) => new EventManager(serverManager, settingsStub);
 
 /**
@@ -61,7 +61,7 @@ const waitForEditor = (editor: ServerSettingsList): Promise<void> =>
 describe("CommandManager", () => {
   let serverManager: ServerManager;
   let commandManager: CommandManager;
-  let settingsStub: LlamaSettingsManager;
+  let settingsStub: SettingsService;
   let mockPi: ReturnType<typeof createMockPi>;
   let eventManager: ReturnType<typeof createMockEventManager>;
 

@@ -9,13 +9,13 @@ import type { SortBy } from "../interfaces/sortBy";
 import { BaseModel } from "../models/baseModel";
 import { Server } from "../server";
 import { authRequiredMessage } from "../ui/strings";
-import type { LlamaSettingsManager } from "./settings";
+import type { SettingsService } from "../settings/settings";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
 type ModelComparator = (a: BaseModel, b: BaseModel) => number;
 
 export class ServerManager {
-  constructor(private readonly settings: LlamaSettingsManager) {}
+  constructor(private readonly settings: SettingsService) {}
   readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
   private readonly serverList: Server[] = [];

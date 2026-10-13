@@ -6,7 +6,7 @@ import type {
   SettingsList,
 } from "@earendil-works/pi-tui";
 import type { LlamaServer } from "../../../interfaces/settings";
-import type { LlamaSettingsManager } from "../../../managers/settings";
+import type { SettingsService } from "../../../settings/settings";
 import { HINTS } from "../../strings";
 import type { OverrideSettingsListOptions } from "../editorOptions";
 import { SettingsListFactory } from "../settingsListFactory";
@@ -46,7 +46,7 @@ export class OverrideSettingsList implements Component, Focusable {
    */
   static async show(
     ui: ExtensionUIContext,
-    settings: LlamaSettingsManager,
+    settings: SettingsService,
   ): Promise<void> {
     const servers = await settings.getLlamaServers();
 

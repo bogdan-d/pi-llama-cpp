@@ -7,7 +7,7 @@ import { PROVIDER_NAME, READABLE_TIMEOUT } from "../constants";
 import { errorMessage } from "../utils/errors";
 import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
-import type { LlamaSettingsManager } from "../managers/settings";
+import type { SettingsService } from "../settings/settings";
 import { BaseModel } from "../models/baseModel";
 import { ServerManager } from "./server";
 
@@ -29,7 +29,7 @@ export class EventManager {
 
   constructor(
     private readonly serverManager: ServerManager,
-    private readonly settings: LlamaSettingsManager,
+    private readonly settings: SettingsService,
   ) {}
 
   /**

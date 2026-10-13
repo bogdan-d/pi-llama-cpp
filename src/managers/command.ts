@@ -10,7 +10,7 @@ import { ServerSettingsList } from "../ui/editors/server/serverEditor";
 import { ModelsMenu } from "./command/models";
 import { EventManager } from "./events";
 import { ServerManager } from "./server";
-import type { LlamaSettingsManager } from "./settings";
+import type { SettingsService } from "../settings/settings";
 
 /**
  * `/models` subcommand completions. Module-level so
@@ -50,7 +50,7 @@ export class CommandManager {
 
   constructor(
     private readonly serverManager: ServerManager,
-    private readonly settings: LlamaSettingsManager,
+    private readonly settings: SettingsService,
     eventManager: EventManager,
   ) {
     this.modelsMenu = new ModelsMenu(serverManager, settings, eventManager);

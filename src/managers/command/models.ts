@@ -9,7 +9,7 @@ import { Status } from "../../enums/status";
 import { BaseModel } from "../../models/baseModel";
 import { EventManager } from "../events";
 import type { ServerManager } from "../server";
-import type { LlamaSettingsManager } from "../settings";
+import type { SettingsService } from "../../settings/settings";
 
 /**
  * Interactive model selection/action flow for the `/models` command.
@@ -26,7 +26,7 @@ import type { LlamaSettingsManager } from "../settings";
 export class ModelsMenu {
   constructor(
     private readonly serverManager: ServerManager,
-    private readonly settings: LlamaSettingsManager,
+    private readonly settings: SettingsService,
     private readonly eventManager: EventManager,
   ) {}
 

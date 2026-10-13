@@ -10,16 +10,14 @@ import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-tim
 import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
 import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
-import {
-  createSettingsManager,
-  LlamaSettingsManager,
-} from "../../src/managers/settings";
+import { SettingsService } from "../../src/settings/settings";
+import { SettingsReader } from "../../src/settings/reader";
+import { SettingsWriter } from "../../src/settings/writer";
 import { Server } from "../../src/server";
 import { CredentialResolver } from "../../src/utils/credentialResolver";
-import { SettingsStore } from "../../src/utils/settingsStore";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsStore } from "../../src/settings/store";
 
-let manager: LlamaSettingsManager;
+let manager: SettingsService;
 
 // Hoisted mock instances
 const mockReadStoredCredential = vi.hoisted(() => vi.fn());
@@ -62,7 +60,7 @@ describe("API key resolution", () => {
     vi.clearAllMocks();
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockReadStoredCredential.mockReturnValue(undefined);
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should return placeholder when credential is not found", () => {
@@ -277,7 +275,7 @@ describe("reactToModelSelect and autoloadOnMessage fallbacks", () => {
       },
     });
 
-    const manager = createSettingsManager();
+    const manager = SettingsService.create();
 
     expect(await manager.resolveReactToModelSelect()).toBe(false);
     expect(await manager.resolveAutoloadOnMessage()).toBe(true);
@@ -300,7 +298,7 @@ describe("resolveShowServerUrls", () => {
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should return true (default) when showServerUrls is not set", async () => {
@@ -316,7 +314,7 @@ describe("resolveShowServerUrls", () => {
       },
     });
 
-    const manager = createSettingsManager();
+    const manager = SettingsService.create();
 
     expect(await manager.resolveShowServerUrls()).toBe(false);
   });
@@ -328,7 +326,7 @@ describe("resolveShowServerUrls", () => {
       },
     });
 
-    const manager = createSettingsManager();
+    const manager = SettingsService.create();
 
     expect(await manager.resolveShowServerUrls()).toBe(true);
   });
@@ -340,7 +338,7 @@ describe("resolveShowServerUrls", () => {
       },
     });
 
-    const manager = createSettingsManager();
+    const manager = SettingsService.create();
 
     expect(await manager.resolveShowServerUrls()).toBe(false);
   });
@@ -364,7 +362,7 @@ describe("resolveServerConfigs", () => {
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should use llamaSettings.servers when configured", async () => {
@@ -514,7 +512,7 @@ describe("Thinking config resolution", () => {
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockSettingsManager.getDefaultThinkingLevel.mockReturnValue("medium");
     mockSettingsManager.getThinkingBudgets.mockReturnValue({});
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should return the default thinking level from SettingsManager", () => {
@@ -576,7 +574,7 @@ describe("setLlamaSettings", () => {
     mockReadFile.mockResolvedValue("{}");
     mockWriteFile.mockResolvedValue(undefined);
     mockRename.mockResolvedValue(undefined);
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should write to project settings when .pi/settings.json exists (auto scope)", async () => {
@@ -694,16 +692,18 @@ describe("setLlamaSettings", () => {
     });
   });
 
-  it("should construct the manager with all collaborators injected", () => {
-    expect(
-      () =>
-        new LlamaSettingsManager(
-          SettingsManager.create(process.cwd()),
-          new SettingsStore("/fake/agent/dir/settings.json"),
-          new SettingsStore("/fake/project/.pi/settings.json"),
-          new CredentialResolver(),
-        ),
-    ).not.toThrow();
+  it("should construct the manager with reader and writer injected", () => {
+    const reader = new SettingsReader(
+      mockSettingsManager as any,
+      new CredentialResolver(),
+    );
+    const writer = new SettingsWriter(
+      mockSettingsManager as any,
+      new SettingsStore("/fake/agent/dir/settings.json"),
+      new SettingsStore("/fake/project/.pi/settings.json"),
+    );
+
+    expect(() => new SettingsService(reader, writer)).not.toThrow();
   });
 });
 
@@ -723,7 +723,7 @@ describe("resolveServerOverrides", () => {
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should return overrides for a server that has them configured", async () => {
@@ -912,7 +912,7 @@ describe("resolveServerConfigs passes overrides", () => {
     mockGetAgentDir.mockReturnValue("/fake/agent/dir");
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("should pass resolved overrides to ServerOptions", async () => {
@@ -942,7 +942,7 @@ describe("resolveServerConfigs passes overrides", () => {
 
 describe("Server.findOverrideForModel", () => {
   function createServer(overrides: Record<string, ModelOverride>): Server {
-    return new Server(createSettingsManager() as any, {
+    return new Server(SettingsService.create() as any, {
       baseUrl: "http://127.0.0.1:9931",
       overrides,
     });
@@ -1073,7 +1073,7 @@ describe("resolveUrls", () => {
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
     mockReload.mockResolvedValue(undefined);
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("falls back to default when nothing is configured", async () => {
@@ -1159,7 +1159,7 @@ describe("URL resolution warnings", () => {
     mockGetProjectSettings.mockReturnValue({});
     mockGetGlobalSettings.mockReturnValue({});
     mockReload.mockResolvedValue(undefined);
-    manager = createSettingsManager();
+    manager = SettingsService.create();
   });
 
   it("collects warnings for invalid env URLs", async () => {

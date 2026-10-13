@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-tui";
 import { SettingsList } from "@earendil-works/pi-tui";
 import type { LlamaSettings } from "../../interfaces/settings";
-import type { LlamaSettingsManager } from "../../managers/settings";
+import type { SettingsService } from "../settings";
 import { ResettableSettingsList } from "../../ui/resettable-settings-list";
 import { SETTINGS_ITEMS } from "../defaults";
 
@@ -20,7 +20,7 @@ export interface SettingsEditorOptions {
   tui: TUI;
   theme: Theme;
   keybindings: KeybindingsManager;
-  settings: LlamaSettingsManager;
+  settings: SettingsService;
   /** Called when Esc closes the editor. */
   done: () => void;
   /** Called on persistence errors. */
@@ -31,7 +31,7 @@ export interface SettingsEditorOptions {
  * Interactive settings menu for the scalar `llamaSettings` fields.
  * Enter/Space cycles the value under the cursor; Esc closes.
  *
- * Reads from `LlamaSettingsManager` for the current config and writes
+ * Reads from `SettingsService` for the current config and writes
  * via `setLlamaSetting()`; write errors are notified and leave the
  * dialog open with values unchanged.
  *
@@ -55,7 +55,7 @@ export class SettingsEditor implements Component, Focusable {
    */
   static async show(
     ui: ExtensionUIContext,
-    settings: LlamaSettingsManager,
+    settings: SettingsService,
   ): Promise<void> {
     await ui.custom<void>(
       (tui, theme, keybindings, done) =>

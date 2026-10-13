@@ -3,7 +3,7 @@ import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
 import { ServerTimeoutSettingsItem } from "../../../settings/items/server-timeout";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
-import type { LlamaSettingsManager } from "../../../managers/settings";
+import type { SettingsService } from "../../../settings/settings";
 import { checkServerHealth } from "../../../utils/health";
 import { ServerIds } from "../../../utils/serverIds";
 import { TITLES, authRequiredMessage } from "../../strings";
@@ -45,7 +45,7 @@ export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
    */
   static async show(
     ui: ExtensionUIContext,
-    settings: LlamaSettingsManager,
+    settings: SettingsService,
   ): Promise<void> {
     const servers = await settings.getLlamaServers();
     const { serverTimeout } = await settings.resolveTimeouts();
