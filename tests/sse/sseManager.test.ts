@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { SSEManager } from "../../src/sse/manager";
-import { createMockServer } from "../mocks";
+import { createMockServer, makeResolverStub } from "../mocks";
 
 /**
  * Builds an SSEManager bound to a stub server, mirroring how
- * `Server.initialize()` wires it up (timeouts are read through the server).
+ * `Server.initialize()` wires it up (timeouts come from the resolver).
  */
 const createManager = (
   pollingTimeout = 60000,
@@ -15,6 +15,10 @@ const createManager = (
       baseUrl: "http://127.0.0.1:9931",
       pollingTimeout,
       serverTimeout,
+    }),
+    makeResolverStub({
+      resolvePollingTimeout: vi.fn(async () => pollingTimeout),
+      resolveServerTimeout: vi.fn(async () => serverTimeout),
     }),
   );
 

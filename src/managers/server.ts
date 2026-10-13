@@ -55,10 +55,12 @@ export class ServerManager {
     this.warnings.push(...this.settings.takeWarnings());
 
     // Re-derive the server list from settings so `/models servers` edits
-    // (add / remove / URL / id / name) apply on the next scan
+    // (add / remove / URL / id / name) apply on the next scan. Fresh
+    // instances every scan: consumers never see a mutated Server.
     const fresh: Server[] = [];
     const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
-    for (const server of await this.settings.resolveServers()) {
+    for (const options of await this.settings.resolveServerConfigs()) {
+      const server = new Server(this.settings, options);
       if (seen.has(server.providerId)) continue;
       seen.add(server.providerId);
       fresh.push(server);

@@ -346,7 +346,7 @@ describe("resolveShowServerUrls", () => {
   });
 });
 
-describe("resolveServers", () => {
+describe("resolveServerConfigs", () => {
   const mockGetAgentDir = vi.mocked(getAgentDir);
   const mockGetProjectSettings = vi.mocked(
     mockSettingsManager.getProjectSettings,
@@ -376,24 +376,24 @@ describe("resolveServers", () => {
       },
     });
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(1);
     expect(result[0].baseUrl).toBe("http://custom:9090");
-    expect(result[0].providerId).toBe("my-server");
+    expect(result[0].customId).toBe("my-server");
   });
 
   it("should fall back to resolveUrls when servers is empty", async () => {
     process.env.LLAMA_SERVER_URL = "http://env-server:9090";
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(1);
     expect(result[0].baseUrl).toBe("http://env-server:9090");
   });
 
   it("should fall back to default URL when no config exists", async () => {
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(1);
     expect(result[0].baseUrl).toBe(LLAMA_SERVER_URL);
@@ -406,12 +406,12 @@ describe("resolveServers", () => {
       },
     });
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(1);
     expect(result[0].baseUrl).toBe(defaultBaseUrl());
-    expect(result[0].providerId).toBe("custom-id");
-    expect(result[0].providerName).toBe(`Llama.cpp (Custom)`);
+    expect(result[0].customId).toBe("custom-id");
+    expect(result[0].customName).toBe("Custom");
   });
 
   it("should handle multiple URLs with partial id/name overrides", async () => {
@@ -422,13 +422,13 @@ describe("resolveServers", () => {
     });
     process.env.LLAMA_SERVER_URL = "http://first:9090;http://second:9091";
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(2);
     expect(result[0].baseUrl).toBe("http://first:9090");
-    expect(result[0].providerId).toBe("first-server");
+    expect(result[0].customId).toBe("first-server");
     expect(result[1].baseUrl).toBe("http://second:9091");
-    expect(result[1].providerId).toBe(`${PROVIDER_PREFIX}=http://second:9091`);
+    expect(result[1].customId).toBeUndefined();
   });
 
   it("should prioritize env variable over global servers", async () => {
@@ -439,7 +439,7 @@ describe("resolveServers", () => {
       },
     });
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     // env variable takes precedence via resolveUrls
     expect(result).toHaveLength(1);
@@ -896,7 +896,7 @@ describe("Server with overrides", () => {
   });
 });
 
-describe("resolveServers passes overrides", () => {
+describe("resolveServerConfigs passes overrides", () => {
   const mockGetAgentDir = vi.mocked(getAgentDir);
   const mockGetProjectSettings = vi.mocked(
     mockSettingsManager.getProjectSettings,
@@ -915,7 +915,7 @@ describe("resolveServers passes overrides", () => {
     manager = createSettingsManager();
   });
 
-  it("should pass resolved overrides to Server instances", async () => {
+  it("should pass resolved overrides to ServerOptions", async () => {
     mockGetProjectSettings.mockReturnValue({
       llamaSettings: {
         servers: [
@@ -930,13 +930,13 @@ describe("resolveServers passes overrides", () => {
       },
     });
 
-    const result = await manager.resolveServers();
+    const result = await manager.resolveServerConfigs();
 
     expect(result).toHaveLength(2);
-    expect(result[0].findOverrideForModel("model-x")).toEqual({
-      cost: { input: 0.5, output: 1.0 },
+    expect(result[0].overrides).toEqual({
+      "model-x": { cost: { input: 0.5, output: 1.0 } },
     });
-    expect(result[1].findOverrideForModel("any-model")).toBeUndefined();
+    expect(result[1].overrides).toEqual({});
   });
 });
 

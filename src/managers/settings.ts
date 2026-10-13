@@ -15,13 +15,16 @@ import {
   LlamaSettings,
   ModelOverride,
 } from "../interfaces/settings";
+import type {
+  ServerOptions,
+  ServerSettingsResolver,
+} from "../interfaces/server";
 import type { SortBy } from "../interfaces/sortBy";
-import { Server } from "../server";
 import { CredentialResolver } from "../utils/credentialResolver";
 import { ServerUrl } from "../utils/urls";
 import { SettingsStore } from "../utils/settingsStore";
 
-export class LlamaSettingsManager {
+export class LlamaSettingsManager implements ServerSettingsResolver {
   /**
    * Creates a new LlamaSettingsManager.
    *
@@ -179,32 +182,30 @@ export class LlamaSettingsManager {
   }
 
   /**
-   * Resolves the servers that this extension will use.
+   * Resolves the raw server configurations that this extension will use.
    * Uses `resolveUrls()` as the source of truth for URLs (env > settings >
    * legacy > default), then applies `id`/`name`/`overrides` from
-   * `llamaSettings.servers` as overrides when available.
+   * `llamaSettings.servers` when available.
    * Reloads settings from disk before reading.
    *
-   * @returns A list of Server objects
+   * @returns A list of ServerOptions for building `Server` instances
    */
-  async resolveServers(): Promise<Server[]> {
+  async resolveServerConfigs(): Promise<ServerOptions[]> {
     const urls = await this.resolveUrls();
     const serverConfigs = (await this.getLlamaSettings()).servers ?? [];
 
-    const servers: Server[] = [];
+    const configs: ServerOptions[] = [];
     for (const url of urls) {
       const config = serverConfigs.find((s) => s.url === url);
       const overrides = await this.resolveServerOverrides(url);
-      servers.push(
-        new Server(this, {
-          baseUrl: url,
-          customId: config?.id,
-          customName: config?.name,
-          overrides,
-        }),
-      );
+      configs.push({
+        baseUrl: url,
+        customId: config?.id,
+        customName: config?.name,
+        overrides,
+      });
     }
-    return servers;
+    return configs;
   }
 
   /**
@@ -285,6 +286,33 @@ export class LlamaSettingsManager {
       serverTimeout:
         llamaSettings.serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
     };
+  }
+
+  /**
+   * Resolves the maximum time (ms) for server verification and SSE probes.
+   *
+   * @returns The server timeout in ms
+   */
+  async resolveServerTimeout(): Promise<number> {
+    return (await this.resolveTimeouts()).serverTimeout;
+  }
+
+  /**
+   * Resolves the time (ms) between status checks during load/unload.
+   *
+   * @returns The polling interval in ms
+   */
+  async resolvePollingInterval(): Promise<number> {
+    return (await this.resolveTimeouts()).pollingInterval;
+  }
+
+  /**
+   * Resolves the maximum time (ms) to wait for model loading.
+   *
+   * @returns The polling timeout in ms
+   */
+  async resolvePollingTimeout(): Promise<number> {
+    return (await this.resolveTimeouts()).pollingTimeout;
   }
 
   /**

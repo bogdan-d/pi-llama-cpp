@@ -12,6 +12,7 @@ import { SortBySettingsItem } from "../src/settings/items/sort-by";
 import { Mode } from "../src/enums/mode";
 import { Status } from "../src/enums/status";
 import type { ModelOverride } from "../src/interfaces/settings";
+import type { ServerSettingsResolver } from "../src/interfaces/server";
 import type { LlamaSettingsManager } from "../src/managers/settings";
 import { BaseModel } from "../src/models/baseModel";
 import { Server } from "../src/server";
@@ -33,10 +34,21 @@ export const makeSettingsStub = (
     getLlamaSettings: vi.fn(async () => ({})),
     getLlamaServers: vi.fn(async () => []),
     resolveTimeouts: vi.fn(async () => ({
+      pollingInterval: PollingIntervalSettingsItem.defaultValue,
       pollingTimeout: PollingTimeoutSettingsItem.defaultValue,
       serverTimeout: ServerTimeoutSettingsItem.defaultValue,
     })),
-    resolveServers: vi.fn(async () => []),
+    resolveServerTimeout: vi.fn(
+      async () => ServerTimeoutSettingsItem.defaultValue,
+    ),
+    resolvePollingInterval: vi.fn(
+      async () => PollingIntervalSettingsItem.defaultValue,
+    ),
+    resolvePollingTimeout: vi.fn(
+      async () => PollingTimeoutSettingsItem.defaultValue,
+    ),
+    resolveEnableSSE: vi.fn(async () => true),
+    resolveServerConfigs: vi.fn(async () => []),
     resolveSortBy: vi.fn(async () => SortBySettingsItem.defaultValue),
     resolveShowServerUrls: vi.fn(
       async () => ShowServerUrlsSettingsItem.defaultValue,
@@ -54,6 +66,29 @@ export const makeSettingsStub = (
     setLlamaSettings: vi.fn(() => Promise.resolve()),
     ...overrides,
   }) as unknown as LlamaSettingsManager;
+
+/**
+ * Stub of the {@link ServerSettingsResolver} interface `Server`,
+ * `SSEManager`, and `BaseModel` depend on. Defaults give every method a
+ * benign value; a case that cares passes just that method as an override.
+ */
+export const makeResolverStub = (
+  overrides: Partial<ServerSettingsResolver> = {},
+): ServerSettingsResolver =>
+  ({
+    resolveServerTimeout: vi.fn(
+      async () => ServerTimeoutSettingsItem.defaultValue,
+    ),
+    resolvePollingInterval: vi.fn(
+      async () => PollingIntervalSettingsItem.defaultValue,
+    ),
+    resolvePollingTimeout: vi.fn(
+      async () => PollingTimeoutSettingsItem.defaultValue,
+    ),
+    resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
+    resolveEnableSSE: vi.fn(async () => true),
+    ...overrides,
+  }) as ServerSettingsResolver;
 
 /**
  * Installs a global `fetch` stub that routes every request into the shared
@@ -97,8 +132,8 @@ export const installFetchStub = (): void => {
 
 /**
  * Overrides for {@link createMockServer}. Identity (`baseUrl`/`customId`/
- * `customName`), `apiKey` and the timeout getters are constructor wiring
- * (ServerOptions + a synthesized settings stub) — a real Server has no
+ * `customName`), `apiKey` and the timeout values are constructor wiring
+ * (ServerOptions + a synthesized resolver stub) — a real Server has no
  * assignable properties by those names. Everything else is shadowed onto the
  * instance as-is (e.g. a custom `initialize`).
  */
@@ -149,19 +184,19 @@ export const createMockServer = (
     ...members
   } = overrides;
 
-  const settings = makeSettingsStub({
+  const resolver = makeResolverStub({
     ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
     ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
-      resolveTimeouts: vi.fn(async () => ({
-        pollingInterval: PollingIntervalSettingsItem.defaultValue,
-        pollingTimeout:
-          pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
-        serverTimeout: serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
-      })),
+      resolvePollingTimeout: vi.fn(
+        async () => pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
+      ),
+      resolveServerTimeout: vi.fn(
+        async () => serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
+      ),
     }),
   });
 
-  const server = new Server(settings, {
+  const server = new Server(resolver, {
     baseUrl: baseUrl ?? defaultBaseUrl(),
     customId,
     customName,
@@ -172,6 +207,21 @@ export const createMockServer = (
     initialize: initialize ?? (async () => {}),
   });
 };
+
+/**
+ * Stubs `Server.prototype.initialize` so `Server` instances built by
+ * `ServerManager.update()` (from `ServerOptions`) come out pre-populated —
+ * replaces the old pattern of injecting pre-built mock servers through
+ * `resolveServers`. The optional `seed` callback receives each server
+ * (push models, wire a fake `sse` slot, etc.); remember to restore mocks
+ * after the test (`vi.restoreAllMocks()`).
+ */
+export const stubInitialize = (seed?: (server: Server) => void) =>
+  vi.spyOn(Server.prototype, "initialize").mockImplementation(async function (
+    this: Server,
+  ) {
+    seed?.(this);
+  });
 
 /** Helper to create a mock BaseModel */
 export const createMockModel = (

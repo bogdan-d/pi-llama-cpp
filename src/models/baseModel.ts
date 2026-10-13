@@ -4,6 +4,7 @@ import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
 import type { ChatModelConfig } from "../interfaces/chatModelConfig";
+import type { ServerSettingsResolver } from "../interfaces/server";
 import { Server } from "../server";
 
 /**
@@ -15,6 +16,7 @@ export abstract class BaseModel {
   constructor(
     protected readonly model: DataProperty,
     protected readonly server: Server,
+    protected readonly resolver: ServerSettingsResolver,
   ) {}
 
   protected readonly labelIcons: Record<Status, string> = {
@@ -288,8 +290,8 @@ export abstract class BaseModel {
    */
   protected async pollStatus(expected: Status): Promise<void> {
     const startTime = Date.now();
-    const timeout = await this.server.getPollingTimeout();
-    const interval = await this.server.getPollingInterval();
+    const timeout = await this.resolver.resolvePollingTimeout();
+    const interval = await this.resolver.resolvePollingInterval();
 
     let current: Status;
     do {

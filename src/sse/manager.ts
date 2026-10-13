@@ -1,3 +1,4 @@
+import type { ServerSettingsResolver } from "../interfaces/server";
 import type { Server } from "../server";
 import { SSEClient } from "./client";
 import { buildAuthHeaders } from "./fetch";
@@ -25,7 +26,10 @@ export class SSEManager {
   private modelCallbacks: Map<string, SSECallback[]> = new Map();
   private sseSupported: boolean | null = null;
 
-  constructor(private readonly server: Server) {}
+  constructor(
+    private readonly server: Server,
+    private readonly resolver: ServerSettingsResolver,
+  ) {}
 
   /**
    * The SSE endpoint URL.
@@ -42,14 +46,14 @@ export class SSEManager {
    * @returns true if SSE is supported
    */
   async probeSSE(): Promise<boolean> {
-    if (!(await this.server.resolveEnableSSE())) return false;
+    if (!(await this.resolver.resolveEnableSSE())) return false;
     if (this.sseSupported !== null) return this.sseSupported;
 
     try {
       const response = await fetch(this.sseEndpoint, {
         method: "GET",
         headers: buildAuthHeaders(this.server.apiKey),
-        signal: AbortSignal.timeout(await this.server.getServerTimeout()),
+        signal: AbortSignal.timeout(await this.resolver.resolveServerTimeout()),
       });
       this.sseSupported =
         response.ok &&
@@ -165,7 +169,7 @@ export class SSEManager {
    */
   async subscribeToStatus(modelId: string): Promise<StatusChangeData> {
     return new Promise(async (resolve, reject) => {
-      const pollingTimeout = await this.server.getPollingTimeout();
+      const pollingTimeout = await this.resolver.resolvePollingTimeout();
       const timeout = setTimeout(
         () => reject(new Error(`SSE status timeout for model: ${modelId}`)),
         pollingTimeout,

@@ -10,6 +10,7 @@ import {
   createMockPi,
   createMockServer,
   makeSettingsStub,
+  stubInitialize,
 } from "../mocks";
 
 /**
@@ -449,27 +450,29 @@ describe("EventManager.autoLoadIfNeeded", () => {
 
 describe("EventManager with a live ServerManager", () => {
   it("should observe servers added after construction", async () => {
-    const serverA = createMockServer({
-      models: [createMockModel("model-a")],
-    });
-    const serverB = createMockServer({
-      baseUrl: "http://127.0.0.1:8081",
-      models: [
-        createMockModel("model-b", { serverUrl: "http://127.0.0.1:8081" }),
-      ],
-    });
+    // Models are seeded into manager-built Servers via the initialize stub,
+    // mirroring what a real `Server.initialize()` fetch would produce.
+    stubInitialize((server) =>
+      server.models.push(
+        ...(server.baseUrl === "http://127.0.0.1:8081"
+          ? [createMockModel("model-b", { serverUrl: server.baseUrl })]
+          : [createMockModel("model-a", { serverUrl: server.baseUrl })]),
+      ),
+    );
 
-    vi.mocked(settingsStub.resolveServers).mockResolvedValue([serverA]);
+    vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+      { baseUrl: "http://127.0.0.1:9931" },
+    ]);
     const serverManager = new ServerManager(settingsStub);
     const mockPi = { registerProvider: vi.fn(), unregisterProvider: vi.fn() };
     await serverManager.update(mockPi as any);
 
     const eventManager = new EventManager(serverManager, settingsStub);
 
-    // Second scan adds serverB — no manager re-construction
-    vi.mocked(settingsStub.resolveServers).mockResolvedValue([
-      serverA,
-      serverB,
+    // Second scan adds the 8081 server — no manager re-construction
+    vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+      { baseUrl: "http://127.0.0.1:9931" },
+      { baseUrl: "http://127.0.0.1:8081" },
     ]);
     await serverManager.update(mockPi as any);
 
@@ -486,7 +489,12 @@ describe("EventManager with a live ServerManager", () => {
     vi.mocked(settingsStub.resolveReactToModelSelect).mockResolvedValue(true);
     const selectCtx = createMockCtx();
     await eventManager.onModelSelect(
-      { model: { provider: serverB.providerId, id: "model-b" } } as any,
+      {
+        model: {
+          provider: "llama-server=http://127.0.0.1:8081",
+          id: "model-b",
+        },
+      } as any,
       selectCtx,
       mockPi as any,
     );

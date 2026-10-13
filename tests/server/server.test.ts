@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-timeout";
-import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
 import { Mode } from "../../src/enums/mode";
 import { ServerStatus } from "../../src/enums/serverStatus";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
@@ -166,7 +164,7 @@ describe("Server fetchServerProps", () => {
   });
 });
 
-describe("Server detectServerMode", () => {
+describe("Server mode detection (via initialize)", () => {
   it("should detect LLAMASWAP mode when /props returns src", async () => {
     // initialize() calls fetchModels() first, then fetchServerProps()
     mockRpc
@@ -216,53 +214,6 @@ describe("Server postRequest", () => {
     expect(mockRpc).toHaveBeenCalledWith("/models/unload", {
       model: "test-model",
     });
-  });
-});
-
-describe("Server timeouts", async () => {
-  it("should resolve timeouts from the injected settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
-
-    expect(await server.getServerTimeout()).toBe(
-      ServerTimeoutSettingsItem.defaultValue,
-    );
-    expect(await server.getPollingTimeout()).toBe(
-      PollingTimeoutSettingsItem.defaultValue,
-    );
-  });
-
-  it("should return resolved custom values", async () => {
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingInterval: 500,
-      pollingTimeout: 90000,
-      serverTimeout: 2000,
-    });
-
-    const server = new Server(settings, {
-      baseUrl: "http://127.0.0.1:9931",
-      customId: "my-id",
-      customName: "My Server",
-    });
-
-    expect(await server.getPollingTimeout()).toBe(90000);
-  });
-
-  it("should read timeouts live from settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
-
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingInterval: 500,
-      pollingTimeout: 120000,
-      serverTimeout: 3000,
-    });
-    expect(await server.getPollingTimeout()).toBe(120000);
-
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingInterval: 500,
-      pollingTimeout: 90000,
-      serverTimeout: 2000,
-    });
-    expect(await server.getPollingTimeout()).toBe(90000);
   });
 });
 

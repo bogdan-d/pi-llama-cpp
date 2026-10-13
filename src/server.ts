@@ -12,9 +12,11 @@ import {
   PropsEndpoint,
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
-import type { ServerOptions } from "./interfaces/server";
+import type {
+  ServerOptions,
+  ServerSettingsResolver,
+} from "./interfaces/server";
 import type { ModelOverride } from "./interfaces/settings";
-import type { LlamaSettingsManager } from "./managers/settings";
 import { BaseModel } from "./models/baseModel";
 import { LegacyModel } from "./models/legacyModel";
 import { LlamaSwapModel } from "./models/llamaSwapModel";
@@ -22,6 +24,7 @@ import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
 import { checkServerHealth } from "./utils/health";
+import { detectMode } from "./utils/detectMode";
 import { ServerIds } from "./utils/serverIds";
 
 export class Server {
@@ -30,7 +33,7 @@ export class Server {
   private sse!: SSEManager;
 
   constructor(
-    private readonly settings: LlamaSettingsManager,
+    private readonly resolver: ServerSettingsResolver,
     private readonly options: ServerOptions,
   ) {
     // Eager client: `isReady` may run before `initialize()` (health probing
@@ -55,38 +58,6 @@ export class Server {
     return baseUrl.endsWith(ENDPOINT_PREFIX)
       ? baseUrl
       : `${baseUrl}${ENDPOINT_PREFIX}`;
-  }
-
-  /**
-   * Maximum time (ms) for server verification and SSE support probe.
-   * Resolved live from the injected settings manager.
-   */
-  async getServerTimeout(): Promise<number> {
-    return (await this.settings.resolveTimeouts()).serverTimeout;
-  }
-
-  /**
-   * Time (ms) between status checks during load/unload.
-   * Resolved live from the injected settings manager.
-   */
-  async getPollingInterval(): Promise<number> {
-    return (await this.settings.resolveTimeouts()).pollingInterval;
-  }
-
-  /**
-   * Maximum time (ms) to wait for model loading before giving up.
-   * Resolved live from the injected settings manager.
-   */
-  async getPollingTimeout(): Promise<number> {
-    return (await this.settings.resolveTimeouts()).pollingTimeout;
-  }
-
-  /**
-   * Resolves whether SSE is enabled for model loading.
-   * Resolved live from the injected settings manager.
-   */
-  async resolveEnableSSE(): Promise<boolean> {
-    return this.settings.resolveEnableSSE();
   }
 
   /**
@@ -116,28 +87,28 @@ export class Server {
   }
 
   /**
-   * Retrieves the API key from the config resolver.
+   * Retrieves the API key from the injected settings resolver.
    * Tries custom ID first, then falls back to URL-based ID.
    */
   get apiKey(): string {
     // Try custom ID first
     if (this.options.customId) {
-      const key = this.settings.resolveApiKey(this.options.customId);
+      const key = this.resolver.resolveApiKey(this.options.customId);
       if (key !== API_KEY_PLACEHOLDER) return key;
     }
     // Fall back to URL-based ID
-    return this.settings.resolveApiKey(ServerIds.fromUrl(this.baseUrl));
+    return this.resolver.resolveApiKey(ServerIds.fromUrl(this.baseUrl));
   }
 
   /**
    * Fetches models from the server and populates {@link models}.
    * Clears the cache first so we always fetch fresh data.
    */
-  async initialize() {
+  async initialize(): Promise<void> {
     this.sse?.disconnect();
-    this.sse = new SSEManager(this);
+    this.sse = new SSEManager(this, this.resolver);
     const { data } = await this.fetchModels();
-    const mode = await this.detectServerMode(data);
+    const mode = detectMode(await this.fetchServerProps(), data);
 
     // Setup models
     const modelCtor = {
@@ -147,28 +118,12 @@ export class Server {
       [Mode.LLAMASWAP]: LlamaSwapModel,
     }[mode];
 
-    const models: BaseModel[] = data.map((m) => new modelCtor(m, this));
+    const models: BaseModel[] = data.map(
+      (m) => new modelCtor(m, this, this.resolver),
+    );
 
     this.models.length = 0;
     this.models.push(...models);
-  }
-
-  /**
-   * Detects the mode of the server from the models data already fetched by
-   * {@link initialize} — no second /v1/models round-trip.
-   *
-   * @param data Models endpoint data fetched by initialize()
-   * @returns The detected mode
-   */
-  private async detectServerMode(data: ModelsEndpoint["data"]): Promise<Mode> {
-    const serverProps = await this.fetchServerProps();
-
-    if ("src" in serverProps && serverProps.src === "llama-swap")
-      return Mode.LLAMASWAP;
-    if ("role" in serverProps && serverProps.role === "router")
-      return Mode.ROUTER;
-    if ("max_model_len" in data[0]) return Mode.LEGACY;
-    return Mode.SINGLE;
   }
 
   /**

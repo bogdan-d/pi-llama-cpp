@@ -1,7 +1,7 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
 import { EventManager } from "../../src/managers/events";
@@ -18,6 +18,7 @@ import {
   createMockServer,
   makeSettingsStub,
   mockRpc,
+  stubInitialize,
 } from "../mocks";
 
 beforeEach(() => {
@@ -26,6 +27,10 @@ beforeEach(() => {
   mockRpc.mockResolvedValue({ data: [] });
   // Mock health checks to return immediately
   vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 /**
@@ -111,8 +116,9 @@ describe("CommandManager", () => {
         models: [model1, model2],
       });
       const unloadSettings = makeSettingsStub({
-        resolveServers: vi.fn(async () => [server]),
+        resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
+      stubInitialize((s) => s.models.push(...server.models));
       serverManager = new ServerManager(unloadSettings);
       const unloadEventManager = createMockEventManager(
         serverManager,
@@ -149,8 +155,9 @@ describe("CommandManager", () => {
         models: [model1, model2],
       });
       const infoSettings = makeSettingsStub({
-        resolveServers: vi.fn(async () => [server]),
+        resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
+      stubInitialize((s) => s.models.push(...server.models));
       serverManager = new ServerManager(infoSettings);
       const infoEventManager = createMockEventManager(
         serverManager,
@@ -541,15 +548,19 @@ describe("CommandManager", () => {
       models: ReturnType<typeof createMockModel>[],
     ) => {
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
       });
+      // Servers are built fresh by each scan; seed the mock models into
+      // them (keyed by baseUrl) via the initialize stub.
+      const seededModels = [...models];
+      stubInitialize((server) =>
+        server.models.push(
+          ...seededModels.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
       const factoryEventManager = createMockEventManager(
         serverManager,
@@ -563,7 +574,7 @@ describe("CommandManager", () => {
         ),
         serverManager,
         settingsStub,
-        servers,
+        seededModels,
         mockPi,
       };
     };
@@ -647,9 +658,8 @@ describe("CommandManager", () => {
     });
 
     it("should pick up servers added via the editor on the next /models scan", async () => {
-      const { commandManager, settingsStub, servers } = createCommandManager([
-        createMockModel("model-a"),
-      ]);
+      const { commandManager, settingsStub, seededModels } =
+        createCommandManager([createMockModel("model-a")]);
 
       const ctx = createMockCtx(() => null);
       await commandManager.handleCommand("", ctx as any, mockPi as any);
@@ -659,17 +669,15 @@ describe("CommandManager", () => {
       expect(choices).toHaveLength(1);
       expect(choices[0]).toContain("model-a");
 
-      // Editor persist → settings change → resolveServers now returns both
+      // Editor persist → settings change → resolveServerConfigs now
+      // returns both servers, and the seed picks up the new model
       const modelB = createMockModel("model-b", {
         serverUrl: "http://127.0.0.1:8081",
       });
-      const serverB = createMockServer({
-        baseUrl: "http://127.0.0.1:8081",
-        models: [modelB],
-      });
-      vi.mocked(settingsStub.resolveServers).mockResolvedValue([
-        ...servers,
-        serverB,
+      seededModels.push(modelB);
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        { baseUrl: "http://127.0.0.1:9931" },
+        { baseUrl: "http://127.0.0.1:8081" },
       ]);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
@@ -682,16 +690,17 @@ describe("CommandManager", () => {
     it("should omit server URLs when showServerUrls is false", async () => {
       const models = [createMockModel("model-a")];
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
         resolveShowServerUrls: vi.fn(async () => false),
       });
+      stubInitialize((server) =>
+        server.models.push(
+          ...models.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
       const urlEventManager = createMockEventManager(
         serverManager,
@@ -719,16 +728,17 @@ describe("CommandManager", () => {
     it("should include server URLs when showServerUrls is true", async () => {
       const models = [createMockModel("model-a")];
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
         resolveShowServerUrls: vi.fn(async () => true),
       });
+      stubInitialize((server) =>
+        server.models.push(
+          ...models.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
       const showUrlEventManager = createMockEventManager(
         serverManager,

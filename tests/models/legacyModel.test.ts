@@ -3,7 +3,12 @@ import { FALLBACK_CTX } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { LegacyModel } from "../../src/models/legacyModel";
-import { createMockServer, installFetchStub, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  mockRpc,
+  makeResolverStub,
+} from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
@@ -21,6 +26,7 @@ const createModel = (extra: Partial<DataProperty> = {}): LegacyModel =>
       ...extra,
     },
     createMockServer(),
+    makeResolverStub(),
   );
 
 describe("LegacyModel mode", () => {
