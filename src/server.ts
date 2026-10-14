@@ -115,8 +115,13 @@ export class Server {
   async initialize(): Promise<void> {
     this.sse?.disconnect();
     this.sse = new SSEManager(this, this.resolver);
-    const { data } = await this.fetchModels();
-    const mode = detectMode(await this.fetchServerProps(), data);
+
+    const [{ data }, props] = await Promise.all([
+      this.fetchModels(),
+      this.fetchServerProps().catch(() => ({}) as PropsEndpoint),
+    ]);
+
+    const mode = detectMode(props, data);
 
     // Setup models
     const modelCtor = {
