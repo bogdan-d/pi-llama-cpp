@@ -4,8 +4,7 @@ import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
 import type { ChatModelConfig } from "../interfaces/chatModelConfig";
-import type { ServerSettingsResolver } from "../interfaces/server";
-import { Server } from "../server";
+import type { IServer, ServerSettingsResolver } from "../interfaces/server";
 
 /**
  * Abstract base class for llama-server models.
@@ -15,7 +14,7 @@ import { Server } from "../server";
 export abstract class BaseModel {
   constructor(
     protected readonly model: DataProperty,
-    protected readonly server: Server,
+    protected readonly server: IServer,
     protected readonly resolver: ServerSettingsResolver,
   ) {}
 
@@ -242,10 +241,10 @@ export abstract class BaseModel {
 
     await this.server.postRequest("load", this.id);
 
-    if (await this.server.sseManager.probeSSE()) {
+    const sse = this.server.sseManager;
+    if (sse && (await sse.probeSSE())) {
       try {
-        const { status, exit_code } =
-          await this.server.sseManager.subscribeToStatus(this.id);
+        const { status, exit_code } = await sse.subscribeToStatus(this.id);
 
         if (status === "failed" || (status === "unloaded" && exit_code !== 0)) {
           throw new Error(`Model loading failed: ${this.id}`);

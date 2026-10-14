@@ -13,6 +13,7 @@ import {
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
 import type {
+  IServer,
   ServerOptions,
   ServerSettingsResolver,
 } from "./interfaces/server";
@@ -31,10 +32,10 @@ const isTimeout = (err: unknown): boolean =>
   err instanceof Error &&
   (err.name === "TimeoutError" || err.name === "AbortError");
 
-export class Server {
+export class Server implements IServer {
   public readonly models: BaseModel[] = [];
   private apiClient: ApiClient;
-  private sse!: SSEManager;
+  private sse?: SSEManager;
 
   constructor(
     private readonly resolver: ServerSettingsResolver,
@@ -70,8 +71,9 @@ export class Server {
 
   /**
    * Provides access to the SSE manager for direct subscriptions.
+   * Only available after {@link initialize} has been called.
    */
-  get sseManager(): SSEManager {
+  get sseManager(): SSEManager | undefined {
     return this.sse;
   }
 
