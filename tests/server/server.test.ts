@@ -4,13 +4,9 @@ import { ServerStatus } from "../../src/enums/serverStatus";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
 import type { SettingsService } from "../../src/settings/settings";
 import { Server } from "../../src/server";
-import {
-  createMockServer,
-  installFetchStub,
-  makeResolverStub,
-  makeSettingsStub,
-  mockRpc,
-} from "../mocks";
+import { createMockServer } from "../mocks/server";
+import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { makeResolverStub, makeSettingsStub } from "../mocks/settings";
 
 // Injected into every real Server below; fresh per test so per-case
 // overrides never leak. The Server constructor resolves the API key eagerly

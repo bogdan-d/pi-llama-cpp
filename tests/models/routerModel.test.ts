@@ -3,12 +3,9 @@ import { FALLBACK_CTX } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { RouterModel } from "../../src/models/routerModel";
-import {
-  createMockServer,
-  installFetchStub,
-  mockRpc,
-  makeResolverStub,
-} from "../mocks";
+import { createMockServer } from "../mocks/server";
+import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { makeResolverStub } from "../mocks/settings";
 
 // Helper to create a mock DataProperty
 const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({

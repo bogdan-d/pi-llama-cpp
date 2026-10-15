@@ -5,13 +5,11 @@ import { EventManager } from "../../src/managers/events";
 import { BaseModel } from "../../src/models/baseModel";
 import { ServerManager } from "../../src/managers/server";
 import type { Server } from "../../src/server";
-import {
-  createMockModel,
-  createMockPi,
-  createMockServer,
-  makeSettingsStub,
-  stubInitialize,
-} from "../mocks";
+import { createMockModel } from "../mocks/model";
+import { createMockPi } from "../mocks/context";
+import { createMockServer } from "../mocks/server";
+import { makeSettingsStub } from "../mocks/settings";
+import { stubInitialize } from "../mocks/server";
 
 /**
  * Injected settings stub (EventManager and — in the live-list test — the

@@ -3,12 +3,9 @@ import { FALLBACK_CTX } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { LegacyModel } from "../../src/models/legacyModel";
-import {
-  createMockServer,
-  installFetchStub,
-  mockRpc,
-  makeResolverStub,
-} from "../mocks";
+import { createMockServer } from "../mocks/server";
+import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { makeResolverStub } from "../mocks/settings";
 
 beforeEach(() => {
   mockRpc.mockReset();

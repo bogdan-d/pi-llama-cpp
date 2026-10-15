@@ -8,12 +8,9 @@ import {
   OverrideFields,
   OverrideSummary,
 } from "../../src/ui/editors/override/fields";
-import {
-  createMockServer,
-  installFetchStub,
-  mockRpc,
-  makeResolverStub,
-} from "../mocks";
+import { createMockServer } from "../mocks/server";
+import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { makeResolverStub } from "../mocks/settings";
 
 beforeEach(() => {
   mockRpc.mockReset();

@@ -2,12 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerOptions } from "../../src/interfaces/server";
 import { ServerManager } from "../../src/managers/server";
 import { BaseModel } from "../../src/models/baseModel";
-import {
-  createMockModel,
-  makeSettingsStub,
-  mockRpc,
-  stubInitialize,
-} from "../mocks";
+import { createMockModel } from "../mocks/model";
+import { makeSettingsStub } from "../mocks/settings";
+import { mockRpc } from "../mocks/rpc";
+import { stubInitialize } from "../mocks/server";
 
 // Injected settings stub — the single instance passed to ServerManager and
 // to every `Server` it constructs (the manager injects it as the settings

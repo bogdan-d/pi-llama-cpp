@@ -11,15 +11,13 @@ import { SETTINGS_ITEMS } from "../../src/settings/defaults";
 import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
 import { ServerDisplay } from "../../src/ui/editors/server/utils";
-import {
-  createMockCtx,
-  createMockModel,
-  createMockPi,
-  createMockServer,
-  makeSettingsStub,
-  mockRpc,
-  stubInitialize,
-} from "../mocks";
+import { createMockCtx } from "../mocks/context";
+import { createMockModel } from "../mocks/model";
+import { createMockPi } from "../mocks/context";
+import { createMockServer } from "../mocks/server";
+import { makeSettingsStub } from "../mocks/settings";
+import { mockRpc } from "../mocks/rpc";
+import { stubInitialize } from "../mocks/server";
 
 beforeEach(() => {
   initTheme();
