@@ -5,9 +5,9 @@ import {
   LLAMA_SERVER_URL,
   PROVIDER_PREFIX,
 } from "../../src/constants";
-import { PollingIntervalSettingsItem } from "../../src/settings/items/polling-interval";
-import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-timeout";
-import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
+import { PollingIntervalSettingsItem } from "../../src/settings/items/pollingInterval";
+import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
+import { ServerTimeoutSettingsItem } from "../../src/settings/items/serverTimeout";
 import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
 import { SettingsService } from "../../src/settings/settings";

@@ -12,7 +12,7 @@ import type {
 import { SettingsList } from "@earendil-works/pi-tui";
 import type { LlamaSettings } from "../../interfaces/settings";
 import type { SettingsService } from "../settings";
-import { ResettableSettingsList } from "../../ui/resettable-settings-list";
+import { ResettableSettingsList } from "../../ui/resettableSettingsList";
 import { SETTINGS_ITEMS } from "../defaults";
 
 /** Options passed to the settings editor. */

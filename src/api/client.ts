@@ -1,6 +1,6 @@
 // layering trade-off: api client depends on settings/items to get the shared
 // polling interval default — avoids duplicating the value across modules.
-import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
+import { PollingIntervalSettingsItem } from "../settings/items/pollingInterval";
 
 /**
  * Error thrown by the API client when the server rejects a request.

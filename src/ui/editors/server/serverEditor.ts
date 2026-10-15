@@ -1,6 +1,6 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
-import { ServerTimeoutSettingsItem } from "../../../settings/items/server-timeout";
+import { ServerTimeoutSettingsItem } from "../../../settings/items/serverTimeout";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { SettingsService } from "../../../settings/settings";

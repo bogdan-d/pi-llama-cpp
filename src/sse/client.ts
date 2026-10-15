@@ -1,6 +1,6 @@
 // layering trade-off: sse client depends on settings/items to get the shared
 // polling interval default — avoids duplicating the value across modules.
-import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
+import { PollingIntervalSettingsItem } from "../settings/items/pollingInterval";
 import { openSSEStream } from "./fetch";
 import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 

@@ -1,12 +1,12 @@
 import type { SettingsItem } from "./base";
-import { AutoloadOnMessageSettingsItem } from "./items/autoload-on-message";
-import { EnableSSESettingsItem } from "./items/enable-sse";
-import { PollingIntervalSettingsItem } from "./items/polling-interval";
-import { PollingTimeoutSettingsItem } from "./items/polling-timeout";
-import { ReactToModelSelectSettingsItem } from "./items/react-to-model-select";
-import { ServerTimeoutSettingsItem } from "./items/server-timeout";
-import { ShowServerUrlsSettingsItem } from "./items/show-server-urls";
-import { SortBySettingsItem } from "./items/sort-by";
+import { AutoloadOnMessageSettingsItem } from "./items/autoloadOnMessage";
+import { EnableSSESettingsItem } from "./items/enableSse";
+import { PollingIntervalSettingsItem } from "./items/pollingInterval";
+import { PollingTimeoutSettingsItem } from "./items/pollingTimeout";
+import { ReactToModelSelectSettingsItem } from "./items/reactToModelSelect";
+import { ServerTimeoutSettingsItem } from "./items/serverTimeout";
+import { ShowServerUrlsSettingsItem } from "./items/showServerUrls";
+import { SortBySettingsItem } from "./items/sortBy";
 
 /**
  * Registry of all scalar settings items for `/models settings`.

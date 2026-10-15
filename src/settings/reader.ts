@@ -1,13 +1,13 @@
 import { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { LLAMA_SERVER_URL, SETTINGS_KEY, THINKING_BUDGETS } from "../constants";
-import { AutoloadOnMessageSettingsItem } from "./items/autoload-on-message";
-import { PollingIntervalSettingsItem } from "./items/polling-interval";
-import { PollingTimeoutSettingsItem } from "./items/polling-timeout";
-import { ReactToModelSelectSettingsItem } from "./items/react-to-model-select";
-import { ServerTimeoutSettingsItem } from "./items/server-timeout";
-import { ShowServerUrlsSettingsItem } from "./items/show-server-urls";
-import { SortBySettingsItem } from "./items/sort-by";
+import { AutoloadOnMessageSettingsItem } from "./items/autoloadOnMessage";
+import { PollingIntervalSettingsItem } from "./items/pollingInterval";
+import { PollingTimeoutSettingsItem } from "./items/pollingTimeout";
+import { ReactToModelSelectSettingsItem } from "./items/reactToModelSelect";
+import { ServerTimeoutSettingsItem } from "./items/serverTimeout";
+import { ShowServerUrlsSettingsItem } from "./items/showServerUrls";
+import { SortBySettingsItem } from "./items/sortBy";
 import {
   LlamaServer,
   LlamaSettings,
