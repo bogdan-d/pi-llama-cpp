@@ -1,5 +1,6 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-completions";
+import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelOverride } from "../src/interfaces/settings";
@@ -46,7 +47,7 @@ async function captureRequest(
   let outgoing: Record<string, unknown> | undefined;
   const response = stream(
     model,
-    { messages: [] },
+    normalizeContext({ messages: [] }),
     {
       apiKey: "test",
       reasoningEffort: level === "off" ? undefined : level,
