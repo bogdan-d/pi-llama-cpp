@@ -3,10 +3,16 @@ import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { SingleModel } from "../../src/models/singleModel";
-import { createMockServer, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  mockRpc,
+  makeResolverStub,
+} from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (extra: Partial<DataProperty> = {}): SingleModel =>
@@ -20,6 +26,7 @@ const createModel = (extra: Partial<DataProperty> = {}): SingleModel =>
       ...extra,
     },
     createMockServer(),
+    makeResolverStub(),
   );
 
 describe("SingleModel mode", () => {

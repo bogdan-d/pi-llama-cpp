@@ -1,10 +1,10 @@
 import type { ModelCost } from "@earendil-works/pi-ai";
-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
-import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
+import { FALLBACK_CTX } from "../constants";
 import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { DataProperty } from "../interfaces/endpoints/models";
-import { Server } from "../server";
+import type { ChatModelConfig } from "../interfaces/chatModelConfig";
+import type { IServer, ServerSettingsResolver } from "../interfaces/server";
 
 /**
  * Abstract base class for llama-server models.
@@ -14,7 +14,8 @@ import { Server } from "../server";
 export abstract class BaseModel {
   constructor(
     protected readonly model: DataProperty,
-    protected readonly server: Server,
+    protected readonly server: IServer,
+    protected readonly resolver: ServerSettingsResolver,
   ) {}
 
   protected readonly labelIcons: Record<Status, string> = {
@@ -172,7 +173,7 @@ export abstract class BaseModel {
    *
    * @returns A Pi configuration object
    */
-  async toProviderConfig(): Promise<ProviderModelConfig> {
+  async toProviderConfig(): Promise<ChatModelConfig> {
     const override = this.server.findOverrideForModel(this.id) ?? {};
 
     // Merge the matched override's cost with zero defaults
@@ -188,7 +189,7 @@ export abstract class BaseModel {
     const contextWindow = await this.getContextSize();
     const maxTokens = this.getMaxTokens(contextWindow);
 
-    const response: ProviderModelConfig = {
+    const response: ChatModelConfig = {
       id: this.id,
       name: this.name,
       reasoning: this.reasoning,
@@ -240,10 +241,10 @@ export abstract class BaseModel {
 
     await this.server.postRequest("load", this.id);
 
-    if (await this.server.sseManager.probeSSE()) {
+    const sse = this.server.sseManager;
+    if (sse && (await sse.probeSSE())) {
       try {
-        const { status, exit_code } =
-          await this.server.sseManager.subscribeToStatus(this.id);
+        const { status, exit_code } = await sse.subscribeToStatus(this.id);
 
         if (status === "failed" || (status === "unloaded" && exit_code !== 0)) {
           throw new Error(`Model loading failed: ${this.id}`);
@@ -261,46 +262,52 @@ export abstract class BaseModel {
         // the same SSE connection, so a timer orphaned by a server restart
         // or reconnect can fire during a later, healthy load. Check the
         // model's real status over HTTP before surfacing an error.
-        await this.pollStatus();
+        await this.pollStatus(Status.LOADED);
         const finalStatus = await this.getStatus();
         if (finalStatus !== Status.LOADED && finalStatus !== Status.SLEEPING) {
           throw new Error(`Model loading failed: ${this.id}`);
         }
       }
     } else {
-      await this.pollStatus();
+      await this.pollStatus(Status.LOADED);
     }
   }
 
   /**
-   * Unloads the model from llama-server
+   * Unloads the model from llama-server and waits until the status
+   * reaches `UNLOADED`.
    */
   async unload(): Promise<void> {
     await this.server.postRequest("unload", this.id);
+    await this.pollStatus(Status.UNLOADED);
   }
 
   /**
-   * Polls llama-server to check when the model is loaded
+   * Polls llama-server until the model reaches the expected status.
    *
-   * @param startTime The initial polling timestamp
-   * @param timeout The maximum amount of ms before timeout. Defaults to server's pollingTimeout
-   * @param interval The polling interval. Defaults to POLLING_INTERVAL
+   * @param expected The status to wait for
    */
-  protected async pollStatus(
-    startTime: number = Date.now(),
-    timeout?: number,
-    interval: number = POLLING_INTERVAL,
-  ): Promise<void> {
-    if (timeout === undefined) {
-      timeout = await this.server.getPollingTimeout();
-    }
-    while ((await this.getStatus()) === Status.LOADING) {
-      // Force a timeout if we wasted too much time polling
+  protected async pollStatus(expected: Status): Promise<void> {
+    const startTime = Date.now();
+    const timeout = await this.resolver.resolvePollingTimeout();
+    const interval = await this.resolver.resolvePollingInterval();
+
+    let current: Status;
+    do {
+      // Timeout on polling
       if (Date.now() - startTime > timeout) {
-        const message = `Model loading timed out after ${timeout} ms: ${this.id}`;
-        throw new Error(message);
+        throw new Error(
+          `Model ${expected} timed out after ${timeout} ms: ${this.id}`,
+        );
       }
+
       await new Promise((r) => setTimeout(r, interval));
-    }
+      current = await this.getStatus();
+
+      // Short-circuit when server didn't load at all
+      if (expected === Status.LOADED && current === Status.UNLOADED) {
+        throw new Error(`Model loading failed: ${this.id}`);
+      }
+    } while (current !== expected);
   }
 }

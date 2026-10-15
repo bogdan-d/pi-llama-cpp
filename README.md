@@ -64,7 +64,7 @@ The extension resolves the llama.cpp server configuration using the following pr
 1. **Environment variable** — `LLAMA_SERVER_URL`
 2. **`llamaSettings`** — Main configuration format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
 3. **`llamaServerUrl`** — Legacy format in `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (global)
-4. **Default** — `http://127.0.0.1:8080`
+4. **Default** — `http://127.0.0.1:9931`
 
 ### Server configuration
 
@@ -77,7 +77,7 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
 ```json
 {
   "llamaSettings": {
-    "servers": [{ "url": "http://127.0.0.1:8080" }]
+    "servers": [{ "url": "http://127.0.0.1:9931" }]
   }
 }
 ```
@@ -89,18 +89,18 @@ Add this to your `.pi/settings.json` (project) or `~/.pi/agent/settings.json` (g
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "id": "local",
         "name": "Local Server",
         "overrides": {}
       },
       {
-        "url": "http://10.0.0.5:8080",
+        "url": "http://10.0.0.5:9931",
         "name": "Remote Server"
       }
     ],
     "reactToModelSelect": true,
-    "autoloadOnMessage": false,
+    "autoloadOnMessage": true,
     "sortBy": "asc",
     "pollingTimeout": 60000,
     "serverTimeout": 1000
@@ -125,17 +125,19 @@ With this config, the servers will appear in Pi as **Llama.cpp (Local Server)** 
 | Option               | Type    | Default | Description                                                   |
 | -------------------- | ------- | ------- | ------------------------------------------------------------- |
 | `reactToModelSelect` | boolean | `true`  | Load the model when you switch via Pi's model picker.         |
-| `autoloadOnMessage`  | boolean | `false` | Automatically load an unloaded model before sending a message |
+| `autoloadOnMessage`  | boolean | `true`  | Automatically load an unloaded model before sending a message |
 | `sortBy`             | string  | `"asc"` | Sort order for models (see below)                             |
+| `pollingInterval`    | number  | `500`   | Time (ms) between status checks during model load/unload      |
 | `pollingTimeout`     | number  | `60000` | Max time (ms) to wait for model loading before giving up      |
 | `serverTimeout`      | number  | `1000`  | Timeout (ms) for server health checks and SSE probes          |
 | `showServerUrls`     | boolean | `true`  | Show `[Server: <url>]` suffix in the /models model list       |
+| `enableSSE`          | boolean | `true`  | Use SSE for model loading progress (falls back to polling)    |
 
 > **Note:** `serverTimeout` controls individual HTTP request timeouts (health checks, SSE probe). `pollingTimeout` controls the total wait time for a model to finish loading. Increase `serverTimeout` for slow/high-latency servers, and `pollingTimeout` for large models or slow hardware.
 
 #### In-session settings menu
 
-Run `/models settings` to edit the scalar settings above without hand-editing JSON. Changes are written to the **project** `.pi/settings.json` if it exists, otherwise to **global** `~/.pi/agent/settings.json`. Boolean and sort changes apply immediately; timeout changes apply on the next model load. The `servers` list is edited with `/models servers` (see below), and per-server model overrides with `/models overrides` (see [Model Overrides](#model-overrides)).
+Run `/models settings` to edit the scalar settings above without hand-editing JSON. Changes are written to the **project** `.pi/settings.json` if it exists, otherwise to **global** `~/.pi/agent/settings.json`. Boolean and sort changes apply immediately; timeout changes apply on the next model load. The `servers` list is edited with `/models servers` (see below), and per-server model overrides with `/models overrides` (see [Model Overrides](#model-overrides)). Press **r** on any setting to reset it to its default value.
 
 #### Server list editor
 
@@ -160,7 +162,7 @@ re-select it from the (new) provider afterwards.
 For a quick setup, you can use the `LLAMA_SERVER_URL` environment variable instead of the JSON config:
 
 ```bash
-export LLAMA_SERVER_URL="http://127.0.0.1:8080"
+export LLAMA_SERVER_URL="http://127.0.0.1:9931"
 ```
 
 This is equivalent to defining a single server in `llamaSettings.servers` with just a URL.
@@ -171,7 +173,7 @@ For a simpler setup, you can use the legacy `llamaServerUrl` key:
 
 ```json
 {
-  "llamaServerUrl": "http://127.0.0.1:8080"
+  "llamaServerUrl": "http://127.0.0.1:9931"
 }
 ```
 
@@ -187,9 +189,9 @@ To connect to multiple llama.cpp servers simultaneously:
 {
   "llamaSettings": {
     "servers": [
-      { "url": "http://127.0.0.1:8080" },
+      { "url": "http://127.0.0.1:9931" },
       { "url": "http://127.0.0.1:8081" },
-      { "url": "http://10.0.0.5:8080" }
+      { "url": "http://10.0.0.5:9931" }
     ]
   }
 }
@@ -198,10 +200,10 @@ To connect to multiple llama.cpp servers simultaneously:
 **Using the environment variable:**
 
 ```bash
-LLAMA_SERVER_URL="http://127.0.0.1:8080;http://127.0.0.1:8081;http://10.0.0.5:8080"
+LLAMA_SERVER_URL="http://127.0.0.1:9931;http://127.0.0.1:8081;http://10.0.0.5:9931"
 ```
 
-Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:8080)**) and its own set of models. The `/models` command lists all models from all servers, labeled with their server URL.
+Each server gets its own provider (e.g., **Llama.cpp (http://127.0.0.1:9931)**) and its own set of models. The `/models` command lists all models from all servers, labeled with their server URL.
 
 ### API Key
 
@@ -221,7 +223,7 @@ The `key` field supports several formats:
 
 ```json
 {
-  "llama-server=http://127.0.0.1:8080": {
+  "llama-server=http://127.0.0.1:9931": {
     "type": "api_key",
     "key": "sk-abc123"
   },
@@ -244,7 +246,7 @@ For env ref formats, you can also store the variable value alongside the key usi
 
 ```json
 {
-  "llama-server=http://127.0.0.1:8080": {
+  "llama-server=http://127.0.0.1:9931": {
     "type": "api_key",
     "key": "$MY_KEY",
     "env": {
@@ -336,6 +338,8 @@ When browsing models via the `/models` command, you can:
 
 > **Note:** In single-model and legacy-model mode, **Unload** is not available, since there is only one model on the server.
 
+> **Note:** Unload operations display progress notifications (similar to loading) so you can track the operation in real time.
+
 ### Thinking Budgets
 
 The extension supports configurable **thinking budgets** that control how many tokens the model allocates to its reasoning/thinking process.
@@ -381,7 +385,7 @@ Add overrides to your server configuration:
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "overrides": {
           "qwen-3.8-27b": {
             "cost": { "input": 0.42, "output": 3.0, "cacheRead": 0.085 }
@@ -449,7 +453,7 @@ Example:
   "llamaSettings": {
     "servers": [
       {
-        "url": "http://127.0.0.1:8080",
+        "url": "http://127.0.0.1:9931",
         "overrides": {
           "llama-3": {
             "compat": {
@@ -503,7 +507,7 @@ You can disable this behavior by setting `reactToModelSelect` to `false` in `lla
 
 ### Loading Models
 
-When you trigger a load, switch, or retry action, the extension uses SSE (Server-Sent Events) to receive real-time progress updates from the server. If SSE is not available, it falls back to polling.
+When you trigger a load, switch, or retry action, the extension uses SSE (Server-Sent Events) to receive real-time progress updates from the server. If SSE is not available, it falls back to polling (every **500 ms**, configurable via `pollingInterval`).
 
 If loading takes longer than **60 seconds** (configurable via `pollingTimeout`), the operation times out with an error.
 

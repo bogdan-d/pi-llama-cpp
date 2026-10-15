@@ -1,18 +1,16 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
+import { EventManager } from "../../src/managers/events";
 import { ServerManager } from "../../src/managers/server";
-import type { LlamaSettingsManager } from "../../src/managers/settings";
+import type { SettingsService } from "../../src/settings/settings";
+import { SETTINGS_ITEMS } from "../../src/settings/defaults";
+import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
 import { ServerDisplay } from "../../src/ui/editors/server/utils";
-import {
-  applySettingChange,
-  buildSettingsItems,
-  formatMs,
-} from "../../src/ui/settings";
 import {
   createMockCtx,
   createMockModel,
@@ -20,16 +18,28 @@ import {
   createMockServer,
   makeSettingsStub,
   mockRpc,
+  stubInitialize,
 } from "../mocks";
 
 beforeEach(() => {
   initTheme();
   vi.clearAllMocks();
   mockRpc.mockResolvedValue({ data: [] });
-  // Mock health checks and auth probes to return immediately
+  // Mock health checks to return immediately
   vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
-  vi.spyOn(ServerDisplay, "authEmoji").mockResolvedValue("");
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/**
+ * Creates a minimal EventManager for CommandManager tests.
+ */
+const createMockEventManager = (
+  serverManager: ServerManager,
+  settingsStub: SettingsService,
+) => new EventManager(serverManager, settingsStub);
 
 /**
  * Waits for a ServerSettingsList to finish its async initialization
@@ -51,14 +61,20 @@ const waitForEditor = (editor: ServerSettingsList): Promise<void> =>
 describe("CommandManager", () => {
   let serverManager: ServerManager;
   let commandManager: CommandManager;
-  let settingsStub: LlamaSettingsManager;
+  let settingsStub: SettingsService;
   let mockPi: ReturnType<typeof createMockPi>;
+  let eventManager: ReturnType<typeof createMockEventManager>;
 
   beforeEach(() => {
     mockPi = createMockPi();
     settingsStub = makeSettingsStub();
     serverManager = new ServerManager(settingsStub);
-    commandManager = new CommandManager(serverManager, settingsStub);
+    eventManager = createMockEventManager(serverManager, settingsStub);
+    commandManager = new CommandManager(
+      serverManager,
+      settingsStub,
+      eventManager,
+    );
   });
 
   describe("getArgumentCompletions", () => {
@@ -96,14 +112,23 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         models: [model1, model2],
       });
       const unloadSettings = makeSettingsStub({
-        resolveServers: vi.fn(async () => [server]),
+        resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
+      stubInitialize((s) => s.models.push(...server.models));
       serverManager = new ServerManager(unloadSettings);
-      commandManager = new CommandManager(serverManager, unloadSettings);
+      const unloadEventManager = createMockEventManager(
+        serverManager,
+        unloadSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        unloadSettings,
+        unloadEventManager,
+      );
 
       const ctx = {
         ui: {
@@ -126,14 +151,23 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:8080",
+        baseUrl: "http://127.0.0.1:9931",
         models: [model1, model2],
       });
       const infoSettings = makeSettingsStub({
-        resolveServers: vi.fn(async () => [server]),
+        resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
+      stubInitialize((s) => s.models.push(...server.models));
       serverManager = new ServerManager(infoSettings);
-      commandManager = new CommandManager(serverManager, infoSettings);
+      const infoEventManager = createMockEventManager(
+        serverManager,
+        infoSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        infoSettings,
+        infoEventManager,
+      );
 
       const ctx = {
         ui: {
@@ -156,67 +190,109 @@ describe("CommandManager", () => {
       expect(formatMs(1500)).toBe("1500ms");
     });
 
-    it("should build one item per editable scalar field", async () => {
-      const items = await buildSettingsItems(settingsStub);
-      expect(items.map((i) => i.id)).toEqual([
+    it("should have one item per editable scalar field", () => {
+      const ids = Object.keys(SETTINGS_ITEMS);
+      expect(ids).toEqual([
         "reactToModelSelect",
         "autoloadOnMessage",
         "sortBy",
+        "pollingInterval",
         "pollingTimeout",
         "serverTimeout",
         "showServerUrls",
+        "enableSSE",
       ]);
       // Booleans are displayed as on/off
-      expect(items[0].values).toEqual(["on", "off"]);
+      expect(SETTINGS_ITEMS["reactToModelSelect"].values).toEqual([
+        "on",
+        "off",
+      ]);
       // Timeouts cycle through formatted presets
-      expect(items[3].values).toEqual(["15s", "30s", "60s", "120s", "300s"]);
-      expect(items[4].values).toEqual(["500ms", "1s", "2s", "5s", "10s"]);
+      expect(SETTINGS_ITEMS["pollingTimeout"].values).toEqual([
+        "15s",
+        "30s",
+        "60s",
+        "120s",
+        "300s",
+      ]);
+      expect(SETTINGS_ITEMS["serverTimeout"].values).toEqual([
+        "500ms",
+        "1s",
+        "2s",
+        "5s",
+        "10s",
+      ]);
     });
 
-    it("should map changes to the right key and type", async () => {
-      const settingsStub = makeSettingsStub();
+    it("should format settings correctly from config", () => {
+      const config = {
+        reactToModelSelect: true,
+        autoloadOnMessage: false,
+        sortBy: "desc-name" as const,
+        pollingTimeout: 120000,
+        serverTimeout: 500,
+        showServerUrls: true,
+      };
 
-      await applySettingChange("reactToModelSelect", "on", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "reactToModelSelect",
-        true,
-      );
+      expect(SETTINGS_ITEMS["reactToModelSelect"].format(config)).toBe("on");
+      expect(SETTINGS_ITEMS["autoloadOnMessage"].format(config)).toBe("off");
+      expect(SETTINGS_ITEMS["sortBy"].format(config)).toBe("Descending (name)");
+      expect(SETTINGS_ITEMS["pollingTimeout"].format(config)).toBe("120s");
+      expect(SETTINGS_ITEMS["serverTimeout"].format(config)).toBe("500ms");
+      expect(SETTINGS_ITEMS["showServerUrls"].format(config)).toBe("on");
+    });
 
-      await applySettingChange("autoloadOnMessage", "off", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "autoloadOnMessage",
-        false,
+    it("should set config values correctly", () => {
+      const reactResult = SETTINGS_ITEMS["reactToModelSelect"].setConfig(
+        {},
+        "on",
       );
+      expect(reactResult).toEqual({
+        valid: true,
+        config: { reactToModelSelect: true },
+      });
 
-      await applySettingChange("sortBy", "desc-name", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "sortBy",
-        "desc-name",
+      const autoloadResult = SETTINGS_ITEMS["autoloadOnMessage"].setConfig(
+        {},
+        "off",
       );
+      expect(autoloadResult).toEqual({
+        valid: true,
+        config: { autoloadOnMessage: false },
+      });
 
-      await applySettingChange("pollingTimeout", "120s", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "pollingTimeout",
-        120000,
+      const sortByResult = SETTINGS_ITEMS["sortBy"].setConfig(
+        {},
+        "Descending (name)",
       );
+      expect(sortByResult).toEqual({
+        valid: true,
+        config: { sortBy: "desc-name" },
+      });
 
-      await applySettingChange("serverTimeout", "500ms", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "serverTimeout",
-        500,
+      const pollingResult = SETTINGS_ITEMS["pollingTimeout"].setConfig(
+        {},
+        "120s",
       );
+      expect(pollingResult).toEqual({
+        valid: true,
+        config: { pollingTimeout: 120000 },
+      });
 
-      await applySettingChange("showServerUrls", "on", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "showServerUrls",
-        true,
+      const serverResult = SETTINGS_ITEMS["serverTimeout"].setConfig(
+        {},
+        "500ms",
       );
+      expect(serverResult).toEqual({
+        valid: true,
+        config: { serverTimeout: 500 },
+      });
 
-      await applySettingChange("showServerUrls", "off", settingsStub);
-      expect(settingsStub.setLlamaSetting).toHaveBeenCalledWith(
-        "showServerUrls",
-        false,
-      );
+      const showResult = SETTINGS_ITEMS["showServerUrls"].setConfig({}, "on");
+      expect(showResult).toEqual({
+        valid: true,
+        config: { showServerUrls: true },
+      });
     });
   });
 
@@ -301,7 +377,15 @@ describe("CommandManager", () => {
       const editorSettings = makeSettingsStub({
         getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const wireEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        wireEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -334,7 +418,7 @@ describe("CommandManager", () => {
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
 
       // Add a server through the wizard (URL → ID → name) →
-      // setLlamaSetting("servers", …) persists only after the final step
+      // setLlamaSettings({ servers: … }) persists only after the final step
       editor.handleInput("a");
       expect(editor.render(80).join("\n")).toContain("Add server · 1/3");
       for (const ch of "http://new:2") editor.handleInput(ch);
@@ -345,10 +429,9 @@ describe("CommandManager", () => {
       editor.handleInput(ENTER); // skip optional name → persist
       // Wait for async persist and rebuild
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
-        { url: "http://seed:1" },
-        { url: "http://new:2" },
-      ]);
+      expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
+        servers: [{ url: "http://seed:1" }, { url: "http://new:2" }],
+      });
 
       // Esc closes the editor
       editor.handleInput(ESC);
@@ -359,7 +442,15 @@ describe("CommandManager", () => {
       const editorSettings = makeSettingsStub({
         getLlamaServers: vi.fn(async () => [{ url: "http://seed:1" }]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const cancelledEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        cancelledEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -384,7 +475,7 @@ describe("CommandManager", () => {
       editor.handleInput(ESC);
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+      expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
       // Back to the list view
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
     });
@@ -396,7 +487,15 @@ describe("CommandManager", () => {
           { url: "http://doomed:2" },
         ]),
       });
-      commandManager = new CommandManager(serverManager, editorSettings);
+      const doomedEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        doomedEventManager,
+      );
       const ctx = createMockCtx(() => null);
 
       await commandManager.handleCommand("servers", ctx as any, mockPi as any);
@@ -427,15 +526,15 @@ describe("CommandManager", () => {
       // Esc keeps the server
       editor.handleInput(ESC);
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).not.toHaveBeenCalled();
+      expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
 
       // Re-open and confirm the default "Delete" selection
       editor.handleInput("d");
       editor.handleInput(ENTER);
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(editorSettings.setLlamaSetting).toHaveBeenCalledWith("servers", [
-        { url: "http://seed:1" },
-      ]);
+      expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
+        servers: [{ url: "http://seed:1" }],
+      });
     });
   });
 
@@ -447,21 +546,33 @@ describe("CommandManager", () => {
       models: ReturnType<typeof createMockModel>[],
     ) => {
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
       });
+      // Servers are built fresh by each scan; seed the mock models into
+      // them (keyed by baseUrl) via the initialize stub.
+      const seededModels = [...models];
+      stubInitialize((server) =>
+        server.models.push(
+          ...seededModels.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
-      return {
-        commandManager: new CommandManager(serverManager, settingsStub),
+      const factoryEventManager = createMockEventManager(
         serverManager,
         settingsStub,
-        servers,
+      );
+      return {
+        commandManager: new CommandManager(
+          serverManager,
+          settingsStub,
+          factoryEventManager,
+        ),
+        serverManager,
+        settingsStub,
+        seededModels,
         mockPi,
       };
     };
@@ -547,9 +658,8 @@ describe("CommandManager", () => {
     });
 
     it("should pick up servers added via the editor on the next /models scan", async () => {
-      const { commandManager, settingsStub, servers } = createCommandManager([
-        createMockModel("model-a"),
-      ]);
+      const { commandManager, settingsStub, seededModels } =
+        createCommandManager([createMockModel("model-a")]);
 
       const ctx = createMockCtx(() => null);
       const menus: string[] = [];
@@ -564,17 +674,15 @@ describe("CommandManager", () => {
       expect(menus[0]).toContain("model-a");
       expect(menus[0]).not.toContain("model-b");
 
-      // Editor persist → settings change → resolveServers now returns both
+      // Editor persist → settings change → resolveServerConfigs now
+      // returns both servers, and the seed picks up the new model
       const modelB = createMockModel("model-b", {
         serverUrl: "http://127.0.0.1:8081",
       });
-      const serverB = createMockServer({
-        baseUrl: "http://127.0.0.1:8081",
-        models: [modelB],
-      });
-      vi.mocked(settingsStub.resolveServers).mockResolvedValue([
-        ...servers,
-        serverB,
+      seededModels.push(modelB);
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        { baseUrl: "http://127.0.0.1:9931" },
+        { baseUrl: "http://127.0.0.1:8081" },
       ]);
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
@@ -586,18 +694,27 @@ describe("CommandManager", () => {
     it("should omit server URLs when showServerUrls is false", async () => {
       const models = [createMockModel("model-a")];
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
         resolveShowServerUrls: vi.fn(async () => false),
       });
+      stubInitialize((server) =>
+        server.models.push(
+          ...models.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
-      const commandManager = new CommandManager(serverManager, settingsStub);
+      const urlEventManager = createMockEventManager(
+        serverManager,
+        settingsStub,
+      );
+      const commandManager = new CommandManager(
+        serverManager,
+        settingsStub,
+        urlEventManager,
+      );
 
       const ctx = createMockCtx(() => null);
       let menu = "";
@@ -615,18 +732,27 @@ describe("CommandManager", () => {
     it("should include server URLs when showServerUrls is true", async () => {
       const models = [createMockModel("model-a")];
       const mockPi = createMockPi();
-      const servers = models.map((model) =>
-        createMockServer({
-          baseUrl: model.serverUrl,
-          models: [model],
-        }),
-      );
       const settingsStub = makeSettingsStub({
-        resolveServers: vi.fn(async () => servers),
+        resolveServerConfigs: vi.fn(async () =>
+          models.map((model) => ({ baseUrl: model.serverUrl })),
+        ),
         resolveShowServerUrls: vi.fn(async () => true),
       });
+      stubInitialize((server) =>
+        server.models.push(
+          ...models.filter((m) => m.serverUrl === server.baseUrl),
+        ),
+      );
       const serverManager = new ServerManager(settingsStub);
-      const commandManager = new CommandManager(serverManager, settingsStub);
+      const showUrlEventManager = createMockEventManager(
+        serverManager,
+        settingsStub,
+      );
+      const commandManager = new CommandManager(
+        serverManager,
+        settingsStub,
+        showUrlEventManager,
+      );
 
       const ctx = createMockCtx(() => null);
       let menu = "";
@@ -637,7 +763,7 @@ describe("CommandManager", () => {
 
       await commandManager.handleCommand("", ctx as any, mockPi as any);
 
-      expect(menu).toContain("[Server: http://127.0.0.1:8080]");
+      expect(menu).toContain("[Server: http://127.0.0.1:9931]");
     });
   });
 });

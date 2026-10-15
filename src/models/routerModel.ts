@@ -1,4 +1,4 @@
-import { FALLBACK_CTX, POLLING_INTERVAL } from "../constants";
+import { FALLBACK_CTX } from "../constants";
 import { Mode } from "../enums/mode";
 import { Status } from "../enums/status";
 import { BaseModel } from "./baseModel";
@@ -11,39 +11,6 @@ import { BaseModel } from "./baseModel";
 export class RouterModel extends BaseModel {
   get mode(): Mode {
     return Mode.ROUTER;
-  }
-
-  /**
-   * Workaround for /models status detection
-   *
-   * When a model is loaded for the very first time,
-   * this workaround will try to poll to /props instead of /models
-   * for up to 5 seconds to try to detect if the model is really loading,
-   * or if it definitely failed.
-   *
-   * The tradeoff is that we'll have to wait for 5 seconds
-   * while the model is "loading", while not really loading.
-   *
-   * In exchange, it will allow unloaded models to be correctly shown as "unloaded".
-   */
-  protected override async pollStatus(startTime = Date.now()): Promise<void> {
-    let elapsed = 0;
-    const limit = 5000;
-
-    // Grab the glitch
-    while (Date.now() - startTime <= limit) {
-      try {
-        await this.server.fetchModelProps(this.id);
-        break;
-      } catch {
-        elapsed += POLLING_INTERVAL;
-        await new Promise((r) => setTimeout(r, POLLING_INTERVAL));
-      }
-    }
-
-    const pollingTimeout = await this.server.getPollingTimeout();
-    const timeout = pollingTimeout - elapsed;
-    return await super.pollStatus(startTime, timeout);
   }
 
   /**
@@ -72,7 +39,7 @@ export class RouterModel extends BaseModel {
    * @returns The value
    */
   private extractFrom(arg: string): number | null {
-    const args = this.model.status!.args;
+    const args = this.model.status?.args;
     if (!args) return null;
 
     const ctxIdx = args.indexOf(arg);

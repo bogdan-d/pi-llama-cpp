@@ -4,12 +4,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { AutocompleteItem } from "@earendil-works/pi-tui";
 import { PROVIDER_NAME } from "../constants";
+import { SettingsEditor } from "../settings/menu/settings-menu";
 import { OverrideSettingsList } from "../ui/editors/override/overrideList";
 import { ServerSettingsList } from "../ui/editors/server/serverEditor";
-import { SettingsEditor } from "../ui/settings";
 import { ModelsMenu } from "./command/models";
+import { EventManager } from "./events";
 import { ServerManager } from "./server";
-import type { LlamaSettingsManager } from "./settings";
+import type { SettingsService } from "../settings/settings";
 
 /**
  * `/models` subcommand completions. Module-level so
@@ -49,9 +50,10 @@ export class CommandManager {
 
   constructor(
     private readonly serverManager: ServerManager,
-    private readonly settings: LlamaSettingsManager,
+    private readonly settings: SettingsService,
+    eventManager: EventManager,
   ) {
-    this.modelsMenu = new ModelsMenu(serverManager, settings);
+    this.modelsMenu = new ModelsMenu(serverManager, settings, eventManager);
   }
 
   /**
@@ -114,6 +116,7 @@ export class CommandManager {
     }
 
     if (args === "unload") {
+      ctx.ui.notify(`Unloading ${PROVIDER_NAME} models...`, "info");
       const models = await this.serverManager.getAllModels();
       await Promise.all(models.map((model) => model.unload()));
       ctx.ui.notify(`Unloaded all ${PROVIDER_NAME} models`, "info");

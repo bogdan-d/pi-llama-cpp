@@ -1,4 +1,6 @@
-import { POLLING_INTERVAL } from "../constants";
+// layering trade-off: api client depends on settings/items to get the shared
+// polling interval default — avoids duplicating the value across modules.
+import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
 
 /**
  * Error thrown by the API client when the server rejects a request.
@@ -14,62 +16,55 @@ export class ApiError extends Error {
 }
 
 /**
- * How long GET responses stay cached: half the polling interval, so a poll
- * tick always reaches the server while multiple reads within one tick
- * (fan-outs like `toProviderConfig`, concurrent model polls) do not.
- */
-const CACHE_TTL = POLLING_INTERVAL / 2;
-
-/**
  * HTTP client for llama-server with GET caching and request deduplication.
  *
- * Two complementary mechanisms keep repeated reads from reaching the server:
- * - the TTL cache absorbs time-spaced repeats (poll loops, sequential reads);
- * - the in-flight map absorbs simultaneous bursts: concurrent callers for the
- *   same key share one request's promise.
- *
- * POST requests are deduplicated but never cached — they are not idempotent
- * reads, and the only caller (`Server.postRequest()`) clears the cache around
- * them. The dedup matters: independent load triggers (command, auto-load,
- * model-select) can race, and merging their duplicate `POST /models/load`
- * into one server call avoids load-state glitches.
+ * GETs are cached (TTL: half the live polling interval) and concurrent
+ * duplicates share one in-flight promise. POSTs are deduplicated but never
+ * cached. Raw/probe methods bypass both.
  */
 export class ApiClient {
-  private cache = new Map<string, { data: unknown; timestamp: number }>();
+  private cache = new Map<string, { data: unknown; expiresAt: number }>();
   private inflight = new Map<string, Promise<unknown>>();
 
   /**
    * Creates a new ApiClient.
    *
+   * The key is resolved per request via `getApiKey`, so a client built once
+   * picks up key changes (settings edits) without being rebuilt.
+   *
    * @param baseUrl The base URL of the llama-server
-   * @param apiKey The API key for authentication
+   * @param getApiKey Resolves the API key for authentication at request time
+   * @param getPollingInterval Resolves the current polling interval, which
+   *   the cache TTL is derived from (half of it) at each GET request
    */
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey: string,
+    private readonly getApiKey: () => string,
+    private readonly getPollingInterval: () => Promise<number> = async () =>
+      PollingIntervalSettingsItem.defaultValue,
   ) {}
 
   /**
    * Makes a cached, deduplicated GET request to the llama-server.
    *
    * @param endpoint The endpoint path to fetch (e.g. "/health")
+   * @param timeout Maximum time (ms) to wait for the response
    * @returns The parsed JSON response from the server
    */
-  async get<T>(endpoint: string): Promise<T> {
+  async get<T>(endpoint: string, timeout?: number): Promise<T> {
     const cached = this.cacheGet<T>(endpoint);
     if (cached !== undefined) return cached;
 
     return this.dedupe(endpoint, async () => {
-      const data = await this.do_get<T>(endpoint);
-      this.cacheSet(endpoint, data);
+      const ttl = (await this.getPollingInterval()) / 2;
+      const data = await this.do_get<T>(endpoint, timeout);
+      this.cacheSet(endpoint, data, ttl);
       return data;
     });
   }
 
   /**
    * Makes a deduplicated POST request to the llama-server.
-   * Concurrent duplicate requests share one server call; responses are
-   * never cached.
    *
    * @param endpoint The endpoint path to post to
    * @param body The optional request body
@@ -82,8 +77,7 @@ export class ApiClient {
   }
 
   /**
-   * Makes a raw GET request that does not parse JSON. Useful for endpoints
-   * that return empty or non-JSON responses.
+   * Makes a raw GET request that does not parse JSON.
    *
    * @param endpoint The endpoint path to fetch
    */
@@ -92,8 +86,7 @@ export class ApiClient {
   }
 
   /**
-   * Makes a raw POST request that does not parse JSON. Useful for endpoints
-   * that return empty or non-JSON responses.
+   * Makes a raw POST request that does not parse JSON.
    *
    * @param endpoint The endpoint path to post to
    * @param body The optional request body
@@ -106,6 +99,25 @@ export class ApiClient {
   }
 
   /**
+   * Makes a GET request that returns only the HTTP status code, without
+   * parsing the body. Used by health probes, which classify on status and
+   * error identity rather than payload.
+   *
+   * @param endpoint The endpoint path to probe (e.g. "/health")
+   * @param timeout Maximum time (ms) to wait for the response
+   * @returns The HTTP status code
+   * @throws ApiError with status 401 on authentication rejection (kept for
+   *   symmetry with `do_request`, so auth classification needs no special case)
+   */
+  async probeStatus(endpoint: string, timeout: number): Promise<number> {
+    const res = await this.fetchResponse(endpoint, "GET", undefined, timeout);
+    if (res.status === 401) {
+      throw new ApiError("authentication", res.status);
+    }
+    return res.status;
+  }
+
+  /**
    * Clears the entire cache.
    */
   clearCache(): void {
@@ -114,7 +126,10 @@ export class ApiClient {
 
   /**
    * Runs `fn` for the given key, or returns an existing in-flight promise.
-   * Concurrent callers for the same key share the same promise.
+   *
+   * @param key The dedup key
+   * @param fn The request to run
+   * @returns The shared promise for the key
    */
   private dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
     const existing = this.inflight.get(key);
@@ -128,12 +143,15 @@ export class ApiClient {
   }
 
   /**
-   * Gets a cached GET response. Returns `undefined` if missing or expired.
+   * Gets a cached GET response.
+   *
+   * @param key The cache key
+   * @returns The cached data, or `undefined` if missing or expired
    */
   private cacheGet<T>(key: string): T | undefined {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
-    if (Date.now() - entry.timestamp > CACHE_TTL) {
+    if (Date.now() > entry.expiresAt) {
       this.cache.delete(key);
       return undefined;
     }
@@ -141,10 +159,14 @@ export class ApiClient {
   }
 
   /**
-   * Stores a GET response in the cache with the current timestamp.
+   * Stores a GET response in the cache with a per-entry expiry.
+   *
+   * @param key The cache key
+   * @param data The response data
+   * @param ttl How long the entry stays fresh, in ms
    */
-  private cacheSet(key: string, data: unknown): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
+  private cacheSet(key: string, data: unknown, ttl: number): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + ttl });
   }
 
   /**
@@ -152,19 +174,51 @@ export class ApiClient {
    *
    * @param endpoint The endpoint path to post to
    * @param body The optional request body
+   * @returns The dedup key
    */
   private cacheKey(endpoint: string, body?: Record<string, unknown>): string {
     return body ? `${endpoint}:${JSON.stringify(body)}` : endpoint;
   }
 
   /**
-   * Makes a raw request to the llama-server.
-   * This bypasses caching and deduplication.
+   * Performs the raw fetch for a request (cache/dedup live in the callers).
+   *
+   * @param endpoint The endpoint path
+   * @param method The HTTP method
+   * @param body The optional request body
+   * @param timeout Maximum time (ms) to wait for the response
+   * @returns The raw response
+   */
+  private fetchResponse(
+    endpoint: string,
+    method: "GET" | "POST",
+    body?: Record<string, unknown>,
+    timeout?: number,
+  ): Promise<Response> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
+
+    return fetch(url, {
+      signal,
+      method,
+      headers: {
+        ...(method === "POST"
+          ? { "Content-Type": "application/json" }
+          : undefined),
+        Authorization: `Bearer ${this.getApiKey()}`,
+      },
+      ...(body ? { body: JSON.stringify(body) } : undefined),
+    });
+  }
+
+  /**
+   * Makes a raw request to the llama-server (no cache, no dedup).
    *
    * @param endpoint The endpoint path
    * @param method The HTTP method
    * @param body The optional request body
    * @param parseJson Whether to parse the response as JSON (default: true)
+   * @param timeout Maximum time (ms) to wait for the response
    * @returns The parsed JSON response, or void if parseJson is false
    * @throws ApiError with status 401 when the server rejects the request
    *   due to authentication (invalid/missing API key).
@@ -174,19 +228,9 @@ export class ApiClient {
     method: "GET" | "POST",
     body?: Record<string, unknown>,
     parseJson = true,
+    timeout?: number,
   ): Promise<T | void> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const res = await fetch(url, {
-      method,
-      headers: {
-        ...(method === "POST"
-          ? { "Content-Type": "application/json" }
-          : undefined),
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      ...(body ? { body: JSON.stringify(body) } : undefined),
-    });
+    const res = await this.fetchResponse(endpoint, method, body, timeout);
 
     if (res.status === 401) {
       throw new ApiError("authentication", res.status);
@@ -196,27 +240,20 @@ export class ApiClient {
   }
 
   /**
-   * Makes a raw GET request to the llama-server.
-   * This bypasses caching and deduplication.
-   *
-   * @param endpoint The endpoint path to fetch (e.g. "/health")
-   * @returns The parsed JSON response from the server
-   * @throws ApiError with status 401 when the server rejects the request
-   *   due to authentication (invalid/missing API key).
+   * Raw GET variant of {@link do_request}.
    */
-  private async do_get<T>(endpoint: string): Promise<T> {
-    return this.do_request<T>(endpoint, "GET") as Promise<T>;
+  private async do_get<T>(endpoint: string, timeout?: number): Promise<T> {
+    return this.do_request<T>(
+      endpoint,
+      "GET",
+      undefined,
+      true,
+      timeout,
+    ) as Promise<T>;
   }
 
   /**
-   * Makes a raw POST request to the llama-server.
-   * This bypasses caching and deduplication.
-   *
-   * @param endpoint The endpoint path to post to
-   * @param body The optional request body
-   * @returns The parsed JSON response from the server
-   * @throws ApiError with status 401 when the server rejects the request
-   *   due to authentication (invalid/missing API key).
+   * Raw POST variant of {@link do_request}.
    */
   private async do_post<T>(
     endpoint: string,

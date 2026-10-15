@@ -1,9 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_CTX } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { RouterModel } from "../../src/models/routerModel";
-import { createMockServer, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  mockRpc,
+  makeResolverStub,
+} from "../mocks";
 
 // Helper to create a mock DataProperty
 const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({
@@ -19,6 +24,7 @@ const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({
 
 beforeEach(() => {
   mockRpc.mockClear();
+  installFetchStub();
 });
 
 describe("RouterModel context size (via toProviderConfig)", () => {
@@ -48,6 +54,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -66,6 +73,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -84,6 +92,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -102,6 +111,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -120,6 +130,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -138,6 +149,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
         },
       }),
       createMockServer(),
+      makeResolverStub(),
     );
 
     const { contextWindow } = await model.toProviderConfig();
@@ -146,8 +158,12 @@ describe("RouterModel context size (via toProviderConfig)", () => {
   });
 
   it("should return n_ctx from meta when loaded", async () => {
-    mockRpc.mockResolvedValueOnce({ modalities: { vision: false } }); // capabilities: /props
-    mockRpc.mockResolvedValueOnce({ is_sleeping: false }); // status: /props
+    // Capabilities and status both read /props within one poll tick, so the
+    // ApiClient cache serves them the same response.
+    mockRpc.mockResolvedValueOnce({
+      modalities: { vision: false },
+      is_sleeping: false,
+    }); // /props (cached for capabilities + status)
     // super.getContextSize() -> fetchModels with meta.n_ctx
     mockRpc.mockResolvedValueOnce({
       data: [
@@ -158,7 +174,11 @@ describe("RouterModel context size (via toProviderConfig)", () => {
       ],
     });
 
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
 
     const { contextWindow } = await model.toProviderConfig();
 
@@ -170,7 +190,11 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
   it("should detect image capability when modalities.vision is true", async () => {
     mockRpc.mockResolvedValueOnce({ modalities: { vision: true } });
 
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
     const { input } = await model.toProviderConfig();
 
     expect(input).toEqual(["text", "image"]);
@@ -185,7 +209,11 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
     // Second call (fetchModels) returns empty data so model is not found
     mockRpc.mockResolvedValueOnce({ data: [] });
 
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
     const { input } = await model.toProviderConfig();
 
     expect(input).toEqual(["text"]);
@@ -213,7 +241,11 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
       ],
     });
 
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
     const { input } = await model.toProviderConfig();
 
     expect(input).toEqual(["text"]);
@@ -237,7 +269,11 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
       ],
     });
 
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
     const { input } = await model.toProviderConfig();
 
     expect(input).toEqual(["text"]);
@@ -246,7 +282,80 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
 
 describe("RouterModel mode", () => {
   it("should always return ROUTER mode", () => {
-    const model = new RouterModel(createModel(), createMockServer());
+    const model = new RouterModel(
+      createModel(),
+      createMockServer(),
+      makeResolverStub(),
+    );
     expect(model.mode).toBe(Mode.ROUTER);
+  });
+});
+
+describe("RouterModel unload", () => {
+  it("should call postRequest then poll until UNLOADED", async () => {
+    const mockServer = createMockServer();
+    const model = new RouterModel(
+      createModel(),
+      mockServer,
+      makeResolverStub(),
+    );
+
+    // postRequest for unload
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus: fetchModelProps returns UNLOADED shape
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 400, message: "model is not loaded" },
+    });
+
+    await model.unload();
+
+    expect(mockRpc).toHaveBeenNthCalledWith(1, "/models/unload", {
+      model: "test-model",
+    });
+  });
+
+  it("should throw on timeout before reaching UNLOADED", async () => {
+    const mockServer = createMockServer({
+      pollingTimeout: 100,
+    });
+    const model = new RouterModel(
+      createModel(),
+      mockServer,
+      makeResolverStub({ resolvePollingTimeout: vi.fn(async () => 100) }),
+    );
+
+    // postRequest
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus keeps returning LOADING (error.code === 503)
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 503 },
+    });
+
+    await expect(model.unload()).rejects.toThrow("timed out");
+  });
+
+  it("should resolve when status reaches UNLOADED", async () => {
+    const mockServer = createMockServer();
+    const model = new RouterModel(
+      createModel(),
+      mockServer,
+      makeResolverStub(),
+    );
+
+    // postRequest
+    mockRpc.mockResolvedValueOnce({ data: [] });
+    // getStatus: first call returns LOADING, second returns UNLOADED
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 503 },
+    });
+    mockRpc.mockResolvedValueOnce({
+      is_sleeping: false,
+      error: { code: 400, message: "model is not loaded" },
+    });
+
+    await expect(model.unload()).resolves.toBeUndefined();
   });
 });

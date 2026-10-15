@@ -1,30 +1,36 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POLLING_TIMEOUT, SERVER_TIMEOUT } from "../../src/constants";
 import { Mode } from "../../src/enums/mode";
 import { ServerStatus } from "../../src/enums/serverStatus";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
-import type { LlamaSettingsManager } from "../../src/managers/settings";
+import type { SettingsService } from "../../src/settings/settings";
 import { Server } from "../../src/server";
-import { createMockServer, makeSettingsStub, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  makeResolverStub,
+  makeSettingsStub,
+  mockRpc,
+} from "../mocks";
 
 // Injected into every real Server below; fresh per test so per-case
 // overrides never leak. The Server constructor resolves the API key eagerly
 // (ApiClient built there) — the stub's placeholder key is never consumed.
-let settings: LlamaSettingsManager;
+let settings: SettingsService;
 
 beforeEach(() => {
   mockRpc.mockClear();
+  installFetchStub();
   settings = makeSettingsStub();
 });
 
 describe("Server providerId", () => {
   it("should generate a unique provider ID from baseUrl", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.providerId).toBe("llama-server=http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.providerId).toBe("llama-server=http://127.0.0.1:9931");
   });
 
   it("should generate different IDs for different baseUrls", () => {
-    const server1 = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
+    const server1 = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
     const server2 = new Server(settings, { baseUrl: "http://127.0.0.1:8081" });
     expect(server1.providerId).not.toBe(server2.providerId);
   });
@@ -32,28 +38,28 @@ describe("Server providerId", () => {
 
 describe("Server providerName", () => {
   it("should generate a human-readable provider name", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.providerName).toBe("Llama.cpp (http://127.0.0.1:8080)");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.providerName).toBe("Llama.cpp (http://127.0.0.1:9931)");
   });
 });
 
 describe("Server apiBaseUrl", () => {
   it("should append the ENDPOINT_PREFIX to baseUrl", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.apiBaseUrl).toBe("http://127.0.0.1:8080/v1");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.apiBaseUrl).toBe("http://127.0.0.1:9931/v1");
   });
 
   it("should not double the prefix when baseUrl already ends with it", () => {
     const server = new Server(settings, {
-      baseUrl: "http://127.0.0.1:8080/v1",
+      baseUrl: "http://127.0.0.1:9931/v1",
     });
-    expect(server.apiBaseUrl).toBe("http://127.0.0.1:8080/v1");
+    expect(server.apiBaseUrl).toBe("http://127.0.0.1:9931/v1");
   });
 
   it("should keep baseUrl untouched for provider identity", () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-    expect(server.baseUrl).toBe("http://127.0.0.1:8080");
-    expect(server.providerId).toBe("llama-server=http://127.0.0.1:8080");
+    const server = new Server(settings, { baseUrl: "http://127.0.0.1:9931" });
+    expect(server.baseUrl).toBe("http://127.0.0.1:9931");
+    expect(server.providerId).toBe("llama-server=http://127.0.0.1:9931");
   });
 });
 
@@ -159,7 +165,7 @@ describe("Server fetchServerProps", () => {
   });
 });
 
-describe("Server detectServerMode", () => {
+describe("Server mode detection (via initialize)", () => {
   it("should detect LLAMASWAP mode when /props returns src", async () => {
     // initialize() calls fetchModels() first, then fetchServerProps()
     mockRpc
@@ -212,50 +218,9 @@ describe("Server postRequest", () => {
   });
 });
 
-describe("Server timeouts", async () => {
-  it("should resolve timeouts from the injected settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-
-    expect(await server.getServerTimeout()).toBe(SERVER_TIMEOUT);
-    expect(await server.getPollingTimeout()).toBe(POLLING_TIMEOUT);
-  });
-
-  it("should return resolved custom values", async () => {
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingTimeout: 90000,
-      serverTimeout: 2000,
-    });
-
-    const server = new Server(settings, {
-      baseUrl: "http://127.0.0.1:8080",
-      customId: "my-id",
-      customName: "My Server",
-    });
-
-    expect(await server.getPollingTimeout()).toBe(90000);
-  });
-
-  it("should read timeouts live from settings", async () => {
-    const server = new Server(settings, { baseUrl: "http://127.0.0.1:8080" });
-
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingTimeout: 120000,
-      serverTimeout: 3000,
-    });
-    expect(await server.getPollingTimeout()).toBe(120000);
-
-    vi.mocked(settings.resolveTimeouts).mockResolvedValue({
-      pollingTimeout: 90000,
-      serverTimeout: 2000,
-    });
-    expect(await server.getPollingTimeout()).toBe(90000);
-  });
-});
-
 describe("Server isReady", () => {
-  // `isReady` delegates to the shared health probe (`utils/health`), which
-  // uses plain `fetch` instead of the ApiClient — stub it per test.
-  const stubFetch = (impl: () => Promise<unknown>) => {
+  // `isReady` probes through the server's ApiClient — stub raw `fetch` per test.
+  const stubFetch = (impl: (url: string) => Promise<unknown>) => {
     vi.stubGlobal("fetch", vi.fn(impl));
   };
 
@@ -263,13 +228,26 @@ describe("Server isReady", () => {
     vi.unstubAllGlobals();
   });
 
-  it("should return READY when health status is ok", async () => {
-    stubFetch(async () => ({ ok: true, json: async () => ({ status: "ok" }) }));
+  it("should return READY when health and auth succeed", async () => {
+    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({}) }));
 
     const server = createMockServer();
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.READY);
+  });
+
+  it("should return UNAUTHORIZED when auth fails", async () => {
+    stubFetch(async (url: string) =>
+      url.includes("/health")
+        ? { ok: true, status: 200, json: async () => ({}) }
+        : { ok: false, status: 401, json: async () => ({}) },
+    );
+
+    const server = createMockServer();
+    const status = await server.isReady(1000);
+
+    expect(status).toBe(ServerStatus.UNAUTHORIZED);
   });
 
   it("should return UNREACHABLE when health check fails", async () => {
@@ -284,7 +262,7 @@ describe("Server isReady", () => {
   });
 
   it("should return UNREACHABLE when health status is not ok", async () => {
-    stubFetch(async () => ({ json: async () => ({ status: "error" }) }));
+    stubFetch(async () => ({ ok: false, status: 503, json: async () => ({}) }));
 
     const server = createMockServer();
     const status = await server.isReady(1000);
@@ -301,5 +279,27 @@ describe("Server isReady", () => {
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.TIMEOUT);
+  });
+
+  it("should perform exactly one /v1/models call across isReady + initialize", async () => {
+    // Regression: the auth probe warms the ApiClient cache, so the models
+    // fetch during `initialize()` must be served from cache, not the network.
+    installFetchStub();
+    mockRpc.mockImplementation(async (endpoint: string) => {
+      if (endpoint === "/v1/models") return { data: [{ id: "m1" }] };
+      return {}; // /health → 200, /props → SINGLE mode
+    });
+
+    const server = new Server(makeResolverStub(), {
+      baseUrl: "http://127.0.0.1:9931",
+    });
+    await server.isReady(1000);
+    await server.initialize();
+
+    const fetchMock = vi.mocked(globalThis.fetch);
+    const modelsCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith("/v1/models"),
+    ).length;
+    expect(modelsCalls).toBe(1);
   });
 });

@@ -1,6 +1,6 @@
 import {
   type BeforeProviderRequestEvent,
-  type ExtensionAPI,
+  ExtensionAPI,
   type ExtensionCommandContext,
   type ExtensionContext,
   type SessionBeforeSwitchEvent,
@@ -11,14 +11,18 @@ import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
 import { ServerManager } from "./managers/server";
-import { createSettingsManager } from "./managers/settings";
 import { StatsManager } from "./managers/stats";
+import { SettingsService } from "./settings/settings";
 
 export default async function (pi: ExtensionAPI) {
-  const settings = createSettingsManager();
+  const settings = SettingsService.create();
   const serverManager = new ServerManager(settings);
   const eventManager = new EventManager(serverManager, settings);
-  const commandManager = new CommandManager(serverManager, settings);
+  const commandManager = new CommandManager(
+    serverManager,
+    settings,
+    eventManager,
+  );
   const statsManager = new StatsManager(() =>
     serverManager.servers.map((server) => server.baseUrl),
   );
@@ -48,13 +52,13 @@ export default async function (pi: ExtensionAPI) {
   pi.on(
     "before_provider_request",
     async (event: BeforeProviderRequestEvent, ctx: ExtensionContext) =>
-      await eventManager.onBeforeProviderRequest(event, ctx),
+      await eventManager.onBeforeProviderRequest(event, ctx, pi),
   );
 
   pi.on(
     "model_select",
     async (event: ModelSelectEvent, ctx: ExtensionContext) =>
-      await eventManager.onModelSelect(event, ctx),
+      await eventManager.onModelSelect(event, ctx, pi),
   );
   pi.on(
     "session_before_switch",

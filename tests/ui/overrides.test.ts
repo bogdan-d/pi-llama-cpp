@@ -8,10 +8,16 @@ import {
   OverrideFields,
   OverrideSummary,
 } from "../../src/ui/editors/override/fields";
-import { createMockServer, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  mockRpc,
+  makeResolverStub,
+} from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
@@ -24,6 +30,7 @@ const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
       created: Date.now(),
     },
     createMockServer({ overrides }),
+    makeResolverStub(),
   );
 
 /** Standard server responses: /props for capabilities, /v1/models for n_ctx */

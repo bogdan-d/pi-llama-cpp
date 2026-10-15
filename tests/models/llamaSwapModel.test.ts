@@ -2,10 +2,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { LlamaSwapModel } from "../../src/models/llamaSwapModel";
-import { createMockServer, mockRpc } from "../mocks";
+import {
+  createMockServer,
+  installFetchStub,
+  mockRpc,
+  makeResolverStub,
+} from "../mocks";
 
 beforeEach(() => {
   mockRpc.mockReset();
+  installFetchStub();
 });
 
 const createModel = (
@@ -22,7 +28,8 @@ const createModel = (
       created: Date.now(),
       ...extra,
     } as any,
-    createMockServer({ baseUrl: "http://127.0.0.1:8080", ...serverOverrides }),
+    createMockServer({ baseUrl: "http://127.0.0.1:9931", ...serverOverrides }),
+    makeResolverStub(),
   );
 
 describe("LlamaSwapModel mode", () => {

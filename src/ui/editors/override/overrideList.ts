@@ -6,7 +6,7 @@ import type {
   SettingsList,
 } from "@earendil-works/pi-tui";
 import type { LlamaServer } from "../../../interfaces/settings";
-import type { LlamaSettingsManager } from "../../../managers/settings";
+import type { SettingsService } from "../../../settings/settings";
 import { HINTS } from "../../strings";
 import type { OverrideSettingsListOptions } from "../editorOptions";
 import { SettingsListFactory } from "../settingsListFactory";
@@ -40,13 +40,13 @@ export class OverrideSettingsList implements Component, Focusable {
   /**
    * Opens the editor in a modal `ui.custom` dialog seeded with the
    * current `llamaSettings.servers` and resolves when the user closes
-   * it (Esc). Writes go through `settings.setLlamaSetting()`; write
+   * it (Esc). Writes go through `settings.setLlamaSettings()`; write
    * errors are notified via `ui` and the editor stays open with the
    * pre-mutation list.
    */
   static async show(
     ui: ExtensionUIContext,
-    settings: LlamaSettingsManager,
+    settings: SettingsService,
   ): Promise<void> {
     const servers = await settings.getLlamaServers();
 
@@ -57,7 +57,7 @@ export class OverrideSettingsList implements Component, Focusable {
           theme,
           keybindings,
           servers,
-          persist: (next) => settings.setLlamaSetting("servers", next),
+          persist: (next) => settings.setLlamaSettings({ servers: next }),
           done: () => done(undefined),
           onError: (message) => ui.notify(message, "error"),
           onChanged: () => {}, // no per-change notification needed

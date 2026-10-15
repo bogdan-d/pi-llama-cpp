@@ -1,4 +1,4 @@
-import { ApiClient } from "./api/client";
+import { ApiClient, ApiError } from "./api/client";
 import {
   API_KEY_PLACEHOLDER,
   ENDPOINT_PREFIX,
@@ -12,50 +12,43 @@ import {
   PropsEndpoint,
   PropsModelEndpoint,
 } from "./interfaces/endpoints/props";
-import type { ServerOptions } from "./interfaces/server";
+import type {
+  IServer,
+  ServerOptions,
+  ServerSettingsResolver,
+} from "./interfaces/server";
 import type { ModelOverride } from "./interfaces/settings";
-import type { LlamaSettingsManager } from "./managers/settings";
 import { BaseModel } from "./models/baseModel";
 import { LegacyModel } from "./models/legacyModel";
 import { LlamaSwapModel } from "./models/llamaSwapModel";
 import { RouterModel } from "./models/routerModel";
 import { SingleModel } from "./models/singleModel";
 import { SSEManager } from "./sse/manager";
-import { checkServerHealth } from "./utils/health";
+import { detectMode } from "./utils/detectMode";
 import { ServerIds } from "./utils/serverIds";
 
-/**
- * Optional constructor collaborators for {@link Server} — the seam tests use
- * to run the real Server against fake clients.
- *
- * Both are factories because their arguments only exist around construction:
- * the API key is (re-)resolved by the Server, and SSEManager needs its owner
- * (it reads the key and timeouts live through it). Factories must stay pure
- * functions of their arguments — `initialize()` re-invokes both on every scan
- * (the ApiClient rebuild picks up a fresh key, by design), so captured
- * per-server state would leak across re-scans.
- */
-export type ServerDeps = {
-  createApiClient?: (apiKey: string) => ApiClient;
-  createSSEManager?: (server: Server) => SSEManager;
-};
+/** True when the error is a fetch timeout (either AbortSignal error name). */
+const isTimeout = (err: unknown): boolean =>
+  err instanceof Error &&
+  (err.name === "TimeoutError" || err.name === "AbortError");
 
-export class Server {
+export class Server implements IServer {
   public readonly models: BaseModel[] = [];
   private apiClient: ApiClient;
-  private sse!: SSEManager;
+  private sse?: SSEManager;
 
   constructor(
-    private readonly settings: LlamaSettingsManager,
+    private readonly resolver: ServerSettingsResolver,
     private readonly options: ServerOptions,
-    private readonly deps: ServerDeps = {},
   ) {
     // Eager client: `isReady` may run before `initialize()` (health probing
-    // in ServerManager), so no lazy fallback is needed. initialize()
-    // rebuilds the client to re-resolve the API key.
-    this.apiClient =
-      deps.createApiClient?.(this.apiKey) ??
-      new ApiClient(options.baseUrl, this.apiKey);
+    // in ServerManager), so no lazy fallback is needed. The key is resolved
+    // per request, so the client never needs rebuilding when it changes.
+    this.apiClient = new ApiClient(
+      options.baseUrl,
+      () => this.apiKey,
+      () => this.resolver.resolvePollingInterval(),
+    );
   }
 
   /** Base URL of this server endpoint. */
@@ -77,25 +70,10 @@ export class Server {
   }
 
   /**
-   * Maximum time (ms) for server verification and SSE support probe.
-   * Resolved live from the injected settings manager.
-   */
-  async getServerTimeout(): Promise<number> {
-    return (await this.settings.resolveTimeouts()).serverTimeout;
-  }
-
-  /**
-   * Maximum time (ms) to wait for model loading before giving up.
-   * Resolved live from the injected settings manager.
-   */
-  async getPollingTimeout(): Promise<number> {
-    return (await this.settings.resolveTimeouts()).pollingTimeout;
-  }
-
-  /**
    * Provides access to the SSE manager for direct subscriptions.
+   * Only available after {@link initialize} has been called.
    */
-  get sseManager(): SSEManager {
+  get sseManager(): SSEManager | undefined {
     return this.sse;
   }
 
@@ -119,30 +97,33 @@ export class Server {
   }
 
   /**
-   * Retrieves the API key from the config resolver.
+   * Retrieves the API key from the injected settings resolver.
    * Tries custom ID first, then falls back to URL-based ID.
    */
   get apiKey(): string {
     // Try custom ID first
     if (this.options.customId) {
-      const key = this.settings.resolveApiKey(this.options.customId);
+      const key = this.resolver.resolveApiKey(this.options.customId);
       if (key !== API_KEY_PLACEHOLDER) return key;
     }
     // Fall back to URL-based ID
-    return this.settings.resolveApiKey(ServerIds.fromUrl(this.baseUrl));
+    return this.resolver.resolveApiKey(ServerIds.fromUrl(this.baseUrl));
   }
 
   /**
    * Fetches models from the server and populates {@link models}.
    * Clears the cache first so we always fetch fresh data.
    */
-  async initialize() {
-    this.apiClient =
-      this.deps.createApiClient?.(this.apiKey) ??
-      new ApiClient(this.baseUrl, this.apiKey);
-    this.sse = this.deps.createSSEManager?.(this) ?? new SSEManager(this);
-    const { data } = await this.fetchModels();
-    const mode = await this.detectServerMode(data);
+  async initialize(): Promise<void> {
+    this.sse?.disconnect();
+    this.sse = new SSEManager(this, this.resolver);
+
+    const [{ data }, props] = await Promise.all([
+      this.fetchModels(),
+      this.fetchServerProps().catch(() => ({}) as PropsEndpoint),
+    ]);
+
+    const mode = detectMode(props, data);
 
     // Setup models
     const modelCtor = {
@@ -152,43 +133,92 @@ export class Server {
       [Mode.LLAMASWAP]: LlamaSwapModel,
     }[mode];
 
-    const models: BaseModel[] = data.map((m) => new modelCtor(m, this));
+    const models: BaseModel[] = data.map(
+      (m) => new modelCtor(m, this, this.resolver),
+    );
 
     this.models.length = 0;
     this.models.push(...models);
   }
 
   /**
-   * Detects the mode of the server from the models data already fetched by
-   * {@link initialize} — no second /v1/models round-trip.
-   *
-   * @param data Models endpoint data fetched by initialize()
-   * @returns The detected mode
-   */
-  private async detectServerMode(data: ModelsEndpoint["data"]): Promise<Mode> {
-    const serverProps = await this.fetchServerProps();
-
-    if ("src" in serverProps && serverProps.src === "llama-swap")
-      return Mode.LLAMASWAP;
-    if ("role" in serverProps && serverProps.role === "router")
-      return Mode.ROUTER;
-    if ("max_model_len" in data[0]) return Mode.LEGACY;
-    return Mode.SINGLE;
-  }
-
-  /**
    * Checks if the server is ready, with a timeout.
    *
-   * Delegates to the shared health probe (`utils/health`) — bypasses the
-   * `ApiClient` on purpose: each caller probes once per scan, so the
-   * client's cache/dedup would be dead weight, and a plain `fetch` with
-   * `AbortSignal.timeout` actually cancels the request on timeout.
+   * Runs the health and auth probes concurrently through this server's
+   * `ApiClient` — the auth probe warms the cache, so a subsequent
+   * `initialize()` gets `/v1/models` from it instead of the network
+   * (one network call per server per scan).
    *
    * @param timeout Maximum time to wait for the health check
    * @returns The server status
    */
   async isReady(timeout: number): Promise<ServerStatus> {
-    return checkServerHealth(this.baseUrl, timeout, this.apiKey);
+    return Server.probe(timeout, this.apiClient);
+  }
+
+  /**
+   * Stateless health check for callers without a `Server` instance (editor
+   * UIs probing draft URLs). Same classification as {@link isReady}, but
+   * with a throwaway `ApiClient` — nothing is cached.
+   *
+   * @param url The bare origin of the llama-server
+   * @param timeout Maximum time (ms) for both probes
+   * @param apiKey Optional API key, sent as a Bearer token
+   * @returns The classified server status
+   */
+  static async check(
+    url: string,
+    timeout: number,
+    apiKey?: string,
+  ): Promise<ServerStatus> {
+    return Server.probe(timeout, new ApiClient(url, () => apiKey ?? ""));
+  }
+
+  /**
+   * Shared probe: classifies health (`/health`, status-code based) and auth
+   * (`/v1/models`) concurrently.
+   *
+   * - Health fails (timeout)  → `TIMEOUT`
+   * - Health fails (other)    → `UNREACHABLE`
+   * - Health 200 + auth 401   → `UNAUTHORIZED`
+   * - Health 200 + auth fails → `TIMEOUT` / `UNREACHABLE`
+   * - Both OK                 → `READY`
+   *
+   * @param timeout Maximum time (ms) for both probes
+   * @param client The client to probe with
+   * @returns The classified server status
+   */
+  private static async probe(
+    timeout: number,
+    client: ApiClient,
+  ): Promise<ServerStatus> {
+    const [health, auth] = await Promise.allSettled([
+      client.probeStatus("/health", timeout),
+      client.get(`${ENDPOINT_PREFIX}/models`, timeout),
+    ]);
+
+    if (health.status === "rejected") {
+      return isTimeout(health.reason)
+        ? ServerStatus.TIMEOUT
+        : ServerStatus.UNREACHABLE;
+    }
+    if (health.value !== 200) {
+      return ServerStatus.UNREACHABLE;
+    }
+
+    if (auth.status === "rejected") {
+      if (
+        auth.reason instanceof ApiError &&
+        auth.reason.type === "authentication"
+      ) {
+        return ServerStatus.UNAUTHORIZED;
+      }
+      return isTimeout(auth.reason)
+        ? ServerStatus.TIMEOUT
+        : ServerStatus.UNREACHABLE;
+    }
+
+    return ServerStatus.READY;
   }
 
   /**

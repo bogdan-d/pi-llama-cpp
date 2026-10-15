@@ -39,7 +39,7 @@ describe("InputDialog", () => {
       tui: createMockTui(),
       title: "Dialog title",
       message: "Server URL",
-      placeholder: "http://127.0.0.1:8080",
+      placeholder: "http://127.0.0.1:9931",
       validate: (raw) => (raw.startsWith("http") ? raw : null),
       onSubmit,
       onCancel,
@@ -53,7 +53,7 @@ describe("InputDialog", () => {
     const rendered = dialog.render(60).join("\n");
     expect(rendered).toContain("Dialog title");
     expect(rendered).toContain("Server URL");
-    expect(rendered).toContain("e.g., http://127.0.0.1:8080");
+    expect(rendered).toContain("e.g., http://127.0.0.1:9931");
   });
 
   it("submits the validated value on Enter", () => {

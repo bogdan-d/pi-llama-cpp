@@ -1,5 +1,6 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-completions";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelOverride } from "../src/interfaces/settings";
 import { EventManager } from "../src/managers/events";
@@ -7,6 +8,7 @@ import { ServerManager } from "../src/managers/server";
 import { StatsManager } from "../src/managers/stats";
 import {
   createMockModel,
+  createMockPi,
   createMockPiContext,
   createMockServer,
   makeSettingsStub,
@@ -52,6 +54,7 @@ async function captureRequest(
         const result = await events.onBeforeProviderRequest(
           { type: "before_provider_request", payload },
           ctx,
+          createMockPi() as unknown as ExtensionAPI,
         );
         const init = { body: JSON.stringify(result) };
         stats["requestProgress"](init);

@@ -1,5 +1,7 @@
 import { execSync } from "node:child_process";
 
+import { type ApiKeyCredential } from "@earendil-works/pi-ai";
+import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import { API_KEY_PLACEHOLDER } from "../constants";
 
 /**
@@ -12,6 +14,23 @@ import { API_KEY_PLACEHOLDER } from "../constants";
  * - **Escape** — `"$$literal"` → `"$literal"`, `"$!bang"` → `"!bang"`
  */
 export class CredentialResolver {
+  /**
+   * Resolves the API key for a provider ID from Pi's credential store.
+   *
+   * Reads the stored credential, then delegates to {@link resolve} for
+   * key format handling. Falls back to the placeholder when no credential
+   * is stored or it has no key.
+   *
+   * @param providerId - The provider ID the credential is stored under.
+   * @returns The resolved API key, or the placeholder on failure.
+   */
+  resolveForProvider(providerId: string): string {
+    const credential = readStoredCredential(providerId) as ApiKeyCredential;
+    if (!credential?.key) return API_KEY_PLACEHOLDER;
+
+    return this.resolve(credential.key, credential.env);
+  }
+
   /**
    * Resolves a credential key to its actual value.
    *

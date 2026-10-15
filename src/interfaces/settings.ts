@@ -93,7 +93,7 @@ export interface LlamaServer {
  *   "servers": [{
  *     "id": "server-a",
  *     "name": "Server A",
- *     "url": "http://localhost:8080"
+ *     "url": "http://localhost:9931"
  *   }],
  *   "reactToModelSelect": true
  *   "autoloadOnMessage": false
@@ -114,9 +114,14 @@ export interface LlamaSettings {
   reactToModelSelect?: boolean;
   /**
    * Whether to auto-load models when a message is sent.
-   * @default false
+   * @default true
    */
   autoloadOnMessage?: boolean;
+  /**
+   * Time (ms) between status checks during load/unload.
+   * @default 500
+   */
+  pollingInterval?: number;
   /**
    * Maximum time (ms) to wait for model loading before giving up.
    * @default 60000
@@ -132,6 +137,11 @@ export interface LlamaSettings {
    * @default "asc"
    */
   sortBy?: SortBy;
+  /**
+   * Whether to use SSE for model loading.
+   * @default true
+   */
+  enableSSE?: boolean;
   /**
    * Whether to show the `[Server: <url>]` suffix in the /models model list.
    * When `false`, only model names are shown without server annotations.

@@ -8,14 +8,14 @@ import { ServerStatus } from "../enums/serverStatus";
 import type { SortBy } from "../interfaces/sortBy";
 import { BaseModel } from "../models/baseModel";
 import { Server } from "../server";
-import { authRequiredMessage } from "../ui/strings";
-import type { LlamaSettingsManager } from "./settings";
+import { authRequiredMessage, warnUser } from "../ui/strings";
+import type { SettingsService } from "../settings/settings";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
 type ModelComparator = (a: BaseModel, b: BaseModel) => number;
 
 export class ServerManager {
-  constructor(private readonly settings: LlamaSettingsManager) {}
+  constructor(private readonly settings: SettingsService) {}
   readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
   private readonly serverList: Server[] = [];
@@ -55,14 +55,19 @@ export class ServerManager {
     this.warnings.push(...this.settings.takeWarnings());
 
     // Re-derive the server list from settings so `/models servers` edits
-    // (add / remove / URL / id / name) apply on the next scan
+    // (add / remove / URL / id / name) apply on the next scan. Fresh
+    // instances every scan: consumers never see a mutated Server.
     const fresh: Server[] = [];
     const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
-    for (const server of await this.settings.resolveServers()) {
+    for (const options of await this.settings.resolveServerConfigs()) {
+      const server = new Server(this.settings, options);
       if (seen.has(server.providerId)) continue;
       seen.add(server.providerId);
       fresh.push(server);
     }
+
+    // Surface warnings from URL parsing (invalid entries, deprecations)
+    this.warnings.push(...this.settings.takeWarnings());
 
     // Unregister providers that disappeared (removed or edited away);
     // `seen` tracks all kept providerIds, so we skip those still present.
@@ -89,7 +94,9 @@ export class ServerManager {
   }
 
   /**
-   * Runs concurrent health checks and returns only healthy servers.
+   * Runs concurrent health checks and returns servers that can be
+   * registered (healthy or unauthorized — the latter is handled by
+   * `registerProvider` with an empty model list).
    *
    * @param timeout Maximum time to wait for each server
    * @returns Array of servers that passed the health check
@@ -104,23 +111,26 @@ export class ServerManager {
 
     const response: Server[] = [];
     for (const { server, status } of healthResults) {
-      if (status === ServerStatus.READY) {
+      if (
+        status === ServerStatus.READY ||
+        status === ServerStatus.UNAUTHORIZED
+      ) {
         response.push(server);
       } else if (status === ServerStatus.TIMEOUT) {
-        const message = [
-          "[pi-llama-cpp]",
-          `${PROVIDER_NAME} server initialization for '${server.baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
-          "Run `/models` to retry without timeout and see all models.",
-        ].join("\n");
-        this.warnings.push(message);
+        this.warnings.push(
+          warnUser(
+            `${PROVIDER_NAME} server initialization for '${server.baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
+            "Run `/models` to retry without timeout and see all models.",
+          ),
+        );
         this.failedUrls.push(server.baseUrl);
       } else {
-        const message = [
-          "[pi-llama-cpp]",
-          `${PROVIDER_NAME} server at '${server.baseUrl}' is unreachable.`,
-          "Check the URL and try again. Run `/models` to retry.",
-        ].join("\n");
-        this.warnings.push(message);
+        this.warnings.push(
+          warnUser(
+            `${PROVIDER_NAME} server at '${server.baseUrl}' is unreachable.`,
+            "Check the URL and try again. Run `/models` to retry.",
+          ),
+        );
         this.failedUrls.push(server.baseUrl);
       }
     }

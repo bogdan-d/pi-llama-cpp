@@ -1,90 +1,131 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
-import type { ApiClient } from "../src/api/client";
-import {
-  API_KEY_PLACEHOLDER,
-  AUTOLOAD_ON_MESSAGE,
-  POLLING_TIMEOUT,
-  REACT_TO_MODEL_SELECT,
-  SERVER_TIMEOUT,
-  SHOW_SERVER_URLS,
-  SORT_BY,
-  THINKING_BUDGETS,
-} from "../src/constants";
+import { defaultBaseUrl } from "./constants";
+import { API_KEY_PLACEHOLDER, THINKING_BUDGETS } from "../src/constants";
+import { AutoloadOnMessageSettingsItem } from "../src/settings/items/autoload-on-message";
+import { PollingIntervalSettingsItem } from "../src/settings/items/polling-interval";
+import { PollingTimeoutSettingsItem } from "../src/settings/items/polling-timeout";
+import { ReactToModelSelectSettingsItem } from "../src/settings/items/react-to-model-select";
+import { ServerTimeoutSettingsItem } from "../src/settings/items/server-timeout";
+import { ShowServerUrlsSettingsItem } from "../src/settings/items/show-server-urls";
+import { SortBySettingsItem } from "../src/settings/items/sort-by";
 import { Mode } from "../src/enums/mode";
 import { Status } from "../src/enums/status";
 import type { ModelOverride } from "../src/interfaces/settings";
-import type { LlamaSettingsManager } from "../src/managers/settings";
+import type { ServerSettingsResolver } from "../src/interfaces/server";
+import type { SettingsService } from "../src/settings/settings";
 import { BaseModel } from "../src/models/baseModel";
 import { Server } from "../src/server";
-import type { SSEManager } from "../src/sse/manager";
 
 /** Shared mock RPC — each test configures it */
 export const mockRpc = vi.fn();
 
 /**
- * Hand-made stub of `LlamaSettingsManager` for constructor injection —
+ * Hand-made stub of `SettingsService` for constructor injection —
  * replaces whole-module `vi.mock` blocks and per-case `vi.spyOn` on the
  * real singleton. Defaults give every consumer-used member a benign value;
  * a case that cares passes just that member as an override. The single
  * `as unknown as` cast lives here so test bodies stay cast-free.
  */
 export const makeSettingsStub = (
-  overrides: Partial<LlamaSettingsManager> = {},
-): LlamaSettingsManager =>
+  overrides: Partial<SettingsService> = {},
+): SettingsService =>
   ({
     getLlamaSettings: vi.fn(async () => ({})),
     getLlamaServers: vi.fn(async () => []),
     resolveTimeouts: vi.fn(async () => ({
-      pollingTimeout: POLLING_TIMEOUT,
-      serverTimeout: SERVER_TIMEOUT,
+      pollingInterval: PollingIntervalSettingsItem.defaultValue,
+      pollingTimeout: PollingTimeoutSettingsItem.defaultValue,
+      serverTimeout: ServerTimeoutSettingsItem.defaultValue,
     })),
-    resolveServers: vi.fn(async () => []),
-    resolveSortBy: vi.fn(async () => SORT_BY),
-    resolveShowServerUrls: vi.fn(async () => SHOW_SERVER_URLS),
+    resolveServerTimeout: vi.fn(
+      async () => ServerTimeoutSettingsItem.defaultValue,
+    ),
+    resolvePollingInterval: vi.fn(async () => 10),
+    resolvePollingTimeout: vi.fn(async () => 5000),
+    resolveEnableSSE: vi.fn(async () => true),
+    resolveServerConfigs: vi.fn(async () => []),
+    resolveSortBy: vi.fn(async () => SortBySettingsItem.defaultValue),
+    resolveShowServerUrls: vi.fn(
+      async () => ShowServerUrlsSettingsItem.defaultValue,
+    ),
     resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
-    resolveReactToModelSelect: vi.fn(async () => REACT_TO_MODEL_SELECT),
-    resolveAutoloadOnMessage: vi.fn(async () => AUTOLOAD_ON_MESSAGE),
+    resolveReactToModelSelect: vi.fn(
+      async () => ReactToModelSelectSettingsItem.defaultValue,
+    ),
+    resolveAutoloadOnMessage: vi.fn(
+      async () => AutoloadOnMessageSettingsItem.defaultValue,
+    ),
     resolveThinkingLevel: vi.fn(() => undefined),
     resolveThinkingBudgets: vi.fn(() => ({ ...THINKING_BUDGETS })),
     takeWarnings: vi.fn((): string[] => []),
-    setLlamaSetting: vi.fn(() => Promise.resolve()),
+    setLlamaSettings: vi.fn(() => Promise.resolve()),
     ...overrides,
-  }) as unknown as LlamaSettingsManager;
+  }) as unknown as SettingsService;
 
 /**
- * Fake `ApiClient`/`SSEManager` pair for injection via `ServerDeps`. The
- * ApiClient delegates every request to the shared `mockRpc`, keyed by the
- * endpoint path (and body for POSTs) — the same contract the old hand-rolled
- * mock server used, so tests keep configuring responses on `mockRpc`. The
- * SSEManager is inert: `disconnect` is a spy and `probeSSE` resolves false,
- * steering load flows onto the HTTP polling path.
+ * Stub of the {@link ServerSettingsResolver} interface `Server`,
+ * `SSEManager`, and `BaseModel` depend on. Defaults give every method a
+ * benign value; a case that cares passes just that method as an override.
  */
-export const createFakeClients = (): {
-  apiClient: ApiClient;
-  sseManager: SSEManager;
-} => {
-  const apiClient = {
-    get: (endpoint: string) => mockRpc(endpoint),
-    post: (endpoint: string, body?: Record<string, unknown>) =>
-      mockRpc(endpoint, body),
-    rawGet: (endpoint: string) => mockRpc(endpoint),
-    rawPost: (endpoint: string) => mockRpc(endpoint),
-    clearCache: vi.fn(),
-  } as unknown as ApiClient;
-  const sseManager = {
-    disconnect: vi.fn(),
-    probeSSE: vi.fn(async () => false),
-    subscribeToStatus: vi.fn(),
-    subscribeToProgress: vi.fn(() => () => {}),
-  } as unknown as SSEManager;
-  return { apiClient, sseManager };
+export const makeResolverStub = (
+  overrides: Partial<ServerSettingsResolver> = {},
+): ServerSettingsResolver =>
+  ({
+    resolveServerTimeout: vi.fn(
+      async () => ServerTimeoutSettingsItem.defaultValue,
+    ),
+    resolvePollingInterval: vi.fn(async () => 10),
+    resolvePollingTimeout: vi.fn(async () => 5000),
+    resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
+    resolveEnableSSE: vi.fn(async () => true),
+    ...overrides,
+  }) as ServerSettingsResolver;
+
+/**
+ * Installs a global `fetch` stub that routes every request into the shared
+ * `mockRpc`, keyed by the endpoint path + query (and parsed body for POSTs) —
+ * the same contract the old fake clients used, so tests keep configuring
+ * responses on `mockRpc`. Responses always come back as 200 JSON; SSE probes
+ * therefore see a non-event-stream content type and fall back to polling.
+ * Tests asserting raw fetch behavior (health classification, SSE streaming)
+ * install their own stub instead, as before.
+ */
+export const installFetchStub = (): void => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (
+        input: string | URL | Request,
+        init?: RequestInit,
+      ): Promise<Response> => {
+        const href =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        const { pathname, search } = new URL(href);
+        const endpoint = `${pathname}${search}`;
+        // Only pass the body argument when present, so call assertions like
+        // `toHaveBeenCalledWith("/v1/models")` match single-argument calls.
+        const data =
+          typeof init?.body === "string"
+            ? await mockRpc(endpoint, JSON.parse(init.body))
+            : await mockRpc(endpoint);
+        return new Response(JSON.stringify(data ?? {}), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    ),
+  );
 };
 
 /**
  * Overrides for {@link createMockServer}. Identity (`baseUrl`/`customId`/
- * `customName`), `apiKey` and the timeout getters are constructor wiring
- * (ServerOptions + a synthesized settings stub) — a real Server has no
+ * `customName`), `apiKey` and the timeout values are constructor wiring
+ * (ServerOptions + a synthesized resolver stub) — a real Server has no
  * assignable properties by those names. Everything else is shadowed onto the
  * instance as-is (e.g. a custom `initialize`).
  */
@@ -135,35 +176,44 @@ export const createMockServer = (
     ...members
   } = overrides;
 
-  const settings = makeSettingsStub({
+  const resolver = makeResolverStub({
     ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
     ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
-      resolveTimeouts: vi.fn(async () => ({
-        pollingTimeout: pollingTimeout ?? POLLING_TIMEOUT,
-        serverTimeout: serverTimeout ?? SERVER_TIMEOUT,
-      })),
+      resolvePollingTimeout: vi.fn(
+        async () => pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
+      ),
+      resolveServerTimeout: vi.fn(
+        async () => serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
+      ),
     }),
   });
 
-  const { apiClient, sseManager } = createFakeClients();
-  const server = new Server(
-    settings,
-    {
-      baseUrl: baseUrl ?? "http://127.0.0.1:8080",
-      customId,
-      customName,
-      overrides: modelOverrides,
-    },
-    {
-      createApiClient: () => apiClient,
-      createSSEManager: () => sseManager,
-    },
-  );
+  const server = new Server(resolver, {
+    baseUrl: baseUrl ?? defaultBaseUrl(),
+    customId,
+    customName,
+    overrides: modelOverrides,
+  });
   if (models) server.models.push(...models);
   return Object.assign(server, members, {
     initialize: initialize ?? (async () => {}),
   });
 };
+
+/**
+ * Stubs `Server.prototype.initialize` so `Server` instances built by
+ * `ServerManager.update()` (from `ServerOptions`) come out pre-populated —
+ * replaces the old pattern of injecting pre-built mock servers through
+ * `resolveServers`. The optional `seed` callback receives each server
+ * (push models, wire a fake `sse` slot, etc.); remember to restore mocks
+ * after the test (`vi.restoreAllMocks()`).
+ */
+export const stubInitialize = (seed?: (server: Server) => void) =>
+  vi.spyOn(Server.prototype, "initialize").mockImplementation(async function (
+    this: Server,
+  ) {
+    seed?.(this);
+  });
 
 /** Helper to create a mock BaseModel */
 export const createMockModel = (
@@ -174,7 +224,7 @@ export const createMockModel = (
     name,
     id: name,
     mode: Mode.ROUTER,
-    serverUrl: "http://127.0.0.1:8080",
+    serverUrl: defaultBaseUrl(),
     capabilities: ["text"] as ["text"],
     getStatus: vi.fn().mockResolvedValue(Status.LOADED),
     getContextSize: vi.fn().mockResolvedValue(4096),
@@ -197,7 +247,7 @@ export const createMockCtx = (
     custom: vi.fn<ExtensionContext["ui"]["custom"]>(),
     notify: vi.fn(),
     theme: {
-      fg: (color: string, text: string) => text,
+      fg: (_color: string, text: string) => text,
     },
   },
   modelRegistry: {
