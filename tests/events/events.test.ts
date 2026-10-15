@@ -8,8 +8,8 @@ import type { Server } from "../../src/server";
 import { createMockModel } from "../mocks/model";
 import { createMockPi } from "../mocks/context";
 import { createMockServer } from "../mocks/server";
+import { mockResolver, mockServerOptions } from "../mocks/server";
 import { makeSettingsStub } from "../mocks/settings";
-import { stubInitialize } from "../mocks/server";
 
 /**
  * Injected settings stub (EventManager and — in the live-list test — the
@@ -87,9 +87,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
           level as any,
         );
 
-        const server = createMockServer({
-          models: ["model-a"].map((id) => createMockModel(id)),
-        });
+        const server = createMockServer(
+          undefined,
+          undefined,
+          ["model-a"].map((id) => createMockModel(id)),
+        );
         const eventManager = createEventManager(server);
         const event = { payload: createPayload("model-a") };
 
@@ -108,9 +110,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
     it("should preserve original payload fields alongside new ones", async () => {
       vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue("low");
 
-      const server = createMockServer({
-        models: ["model-b"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-b"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = {
         payload: {
@@ -135,9 +139,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
 
   describe("non-llama.cpp models", () => {
     it("should return the payload unchanged for unknown models", async () => {
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createNonLlamaPayload() };
 
@@ -154,9 +160,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
 
   describe("missing model in payload", () => {
     it("should return the payload unchanged when model is absent", async () => {
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: { messages: [] } };
 
@@ -179,9 +187,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         low: 4096,
       });
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -202,9 +212,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         low: 4096,
       });
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -231,9 +243,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         bar: 123,
       } as any);
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -255,9 +269,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         off: 99999,
       });
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -281,9 +297,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         max: 1,
       });
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -305,9 +323,11 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ...THINKING_BUDGETS,
       });
 
-      const server = createMockServer({
-        models: ["model-a"].map((id) => createMockModel(id)),
-      });
+      const server = createMockServer(
+        undefined,
+        undefined,
+        ["model-a"].map((id) => createMockModel(id)),
+      );
       const eventManager = createEventManager(server);
       const event = { payload: createPayload("model-a") };
 
@@ -329,9 +349,11 @@ describe("EventManager.onModelSelect", () => {
   });
 
   it("should load the model when reactToModelSelect is true", async () => {
-    const server = createMockServer({
-      models: ["model-a"].map((id) => createMockModel(id)),
-    });
+    const server = createMockServer(
+      undefined,
+      undefined,
+      ["model-a"].map((id) => createMockModel(id)),
+    );
     const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
@@ -347,9 +369,11 @@ describe("EventManager.onModelSelect", () => {
   it("should return early when reactToModelSelect is false", async () => {
     vi.mocked(settingsStub.resolveReactToModelSelect).mockResolvedValue(false);
 
-    const server = createMockServer({
-      models: ["model-a"].map((id) => createMockModel(id)),
-    });
+    const server = createMockServer(
+      undefined,
+      undefined,
+      ["model-a"].map((id) => createMockModel(id)),
+    );
     const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
@@ -367,14 +391,12 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should load the model when autoloadOnMessage is true and model is UNLOADED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer({
-      models: [
-        createMockModel("model-a", {
-          getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
-          load: vi.fn().mockResolvedValue(undefined),
-        }),
-      ],
-    });
+    const server = createMockServer(mockResolver, mockServerOptions, [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
     const eventManager = createEventManager(server);
     const model = server.models[0];
     const ctx = createMockCtx();
@@ -388,14 +410,12 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when autoloadOnMessage is false", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(false);
 
-    const server = createMockServer({
-      models: [
-        createMockModel("model-a", {
-          getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
-          load: vi.fn().mockResolvedValue(undefined),
-        }),
-      ],
-    });
+    const server = createMockServer(mockResolver, mockServerOptions, [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
     const eventManager = createEventManager(server);
     const model = server.models[0];
     const ctx = createMockCtx();
@@ -408,14 +428,12 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when model is already LOADED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer({
-      models: [
-        createMockModel("model-a", {
-          getStatus: vi.fn().mockResolvedValue(Status.LOADED),
-          load: vi.fn().mockResolvedValue(undefined),
-        }),
-      ],
-    });
+    const server = createMockServer(mockResolver, mockServerOptions, [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.LOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
     const eventManager = createEventManager(server);
     const model = server.models[0];
     const ctx = createMockCtx();
@@ -428,14 +446,12 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when model is SLEEPING", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer({
-      models: [
-        createMockModel("model-a", {
-          getStatus: vi.fn().mockResolvedValue(Status.SLEEPING),
-          load: vi.fn().mockResolvedValue(undefined),
-        }),
-      ],
-    });
+    const server = createMockServer(mockResolver, mockServerOptions, [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.SLEEPING),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
     const eventManager = createEventManager(server);
     const model = server.models[0];
     const ctx = createMockCtx();
@@ -448,20 +464,23 @@ describe("EventManager.autoLoadIfNeeded", () => {
 
 describe("EventManager with a live ServerManager", () => {
   it("should observe servers added after construction", async () => {
-    // Models are seeded into manager-built Servers via the initialize stub,
+    // Models are seeded into manager-built Servers via the server factory,
     // mirroring what a real `Server.initialize()` fetch would produce.
-    stubInitialize((server) =>
-      server.models.push(
-        ...(server.baseUrl === "http://127.0.0.1:8081"
-          ? [createMockModel("model-b", { serverUrl: server.baseUrl })]
-          : [createMockModel("model-a", { serverUrl: server.baseUrl })]),
-      ),
-    );
-
     vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
       { baseUrl: "http://127.0.0.1:9931" },
     ]);
-    const serverManager = new ServerManager(settingsStub);
+    const serverManager = new ServerManager(settingsStub, {
+      create: (_resolver, options) =>
+        createMockServer(
+          undefined,
+          {
+            baseUrl: options.baseUrl,
+          },
+          options.baseUrl === "http://127.0.0.1:8081"
+            ? [createMockModel("model-b", { serverUrl: options.baseUrl })]
+            : [createMockModel("model-a", { serverUrl: options.baseUrl })],
+        ),
+    });
     const mockPi = { registerProvider: vi.fn(), unregisterProvider: vi.fn() };
     await serverManager.update(mockPi as any);
 

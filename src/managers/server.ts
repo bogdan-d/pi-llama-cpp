@@ -7,15 +7,19 @@ import { API_TYPE, PROVIDER_NAME } from "../constants";
 import { ServerStatus } from "../enums/serverStatus";
 import type { SortBy } from "../interfaces/sortBy";
 import { BaseModel } from "../models/baseModel";
-import { Server } from "../server";
 import { authRequiredMessage, warnUser } from "../ui/strings";
+import { ServerFactory } from "../servers/serverFactory";
 import type { SettingsService } from "../settings/settings";
+import type { Server } from "../server";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
 type ModelComparator = (a: BaseModel, b: BaseModel) => number;
 
 export class ServerManager {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly serverFactory: ServerFactory,
+  ) {}
   readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
   private readonly serverList: Server[] = [];
@@ -60,7 +64,7 @@ export class ServerManager {
     const fresh: Server[] = [];
     const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
     for (const options of await this.settings.resolveServerConfigs()) {
-      const server = new Server(this.settings, options);
+      const server = this.serverFactory.create(this.settings, options);
       if (seen.has(server.providerId)) continue;
       seen.add(server.providerId);
       fresh.push(server);

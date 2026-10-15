@@ -2,100 +2,60 @@ import { vi } from "vitest";
 import { defaultBaseUrl } from "../constants";
 import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
 import { ServerTimeoutSettingsItem } from "../../src/settings/items/serverTimeout";
-import type { ModelOverride } from "../../src/interfaces/settings";
+import type { ServerSettingsResolver } from "../../src/interfaces/server";
+import type { ServerOptions } from "../../src/interfaces/server";
 import { makeResolverStub } from "./settings";
 import { BaseModel } from "../../src/models/baseModel";
 import { Server } from "../../src/server";
 
-/**
- * Overrides for {@link createMockServer}. Identity (`baseUrl`/`customId`/
- * `customName`), `apiKey` and the timeout values are constructor wiring
- * (ServerOptions + a synthesized resolver stub) — a real Server has no
- * assignable properties by those names. Everything else is shadowed onto the
- * instance as-is (e.g. a custom `initialize`).
- */
-export type MockServerOverrides = Partial<
-  Omit<
-    Server,
-    | "baseUrl"
-    | "providerId"
-    | "providerName"
-    | "pollingTimeout"
-    | "serverTimeout"
-    | "sseManager"
-    | "models"
-  >
-> & {
-  baseUrl?: string;
-  customId?: string;
-  customName?: string;
-  apiKey?: string;
-  models?: BaseModel[];
-  pollingTimeout?: number;
-  serverTimeout?: number;
-  overrides?: Record<string, ModelOverride>;
-};
+/** Default resolver stub — omit the resolver argument to use this. */
+const defaultResolver = makeResolverStub({
+  resolveApiKey: vi.fn(() => "sk-placeholder"),
+  resolvePollingTimeout: vi.fn(
+    async () => PollingTimeoutSettingsItem.defaultValue,
+  ),
+  resolveServerTimeout: vi.fn(
+    async () => ServerTimeoutSettingsItem.defaultValue,
+  ),
+});
+
+/** Sentinel — omit the resolver (uses a no-op stub). */
+export const mockResolver: ServerSettingsResolver = defaultResolver;
+
+/** Sentinel — omit the options (uses a default baseUrl). */
+export const mockServerOptions = {} as Partial<ServerOptions>;
 
 /**
- * Builds a real `Server` wired with fake collaborators (`createFakeClients`),
+ * Builds a real `Server` wired with fake collaborators,
  * replacing the old hand-rolled `Partial<Server>` mock whose `isReady` /
  * `initialize` re-implementations drifted from the real ones.
  *
- * Seeded `models` land directly in `server.models`; `initialize` is stubbed
- * to a no-op so a `ServerManager.update()` scan cannot wipe the seeds with
- * fetched data — pass an `initialize` override to restore the real flow.
+ * Mirrors the real `Server` constructor `(resolver, options)` and adds:
+ * - `models` — seeded after construction (like a real scan would do)
+ * - `overrides` — post-construction property overrides (e.g. custom `initialize`)
+ *
+ * If `resolver` is omitted a no-op stub is used — tests that need custom
+ * apiKey / timeouts should pass their own via `makeResolverStub`.
  */
 export const createMockServer = (
-  overrides: MockServerOverrides = {},
+  resolver?: ServerSettingsResolver,
+  options?: Partial<ServerOptions>,
+  models?: BaseModel[],
+  overrides?: Partial<Server>,
 ): Server => {
-  const {
-    baseUrl,
-    customId,
-    customName,
-    apiKey,
-    models,
-    pollingTimeout,
-    serverTimeout,
-    overrides: modelOverrides,
-    initialize,
-    ...members
-  } = overrides;
+  const effectiveResolver = resolver ?? defaultResolver;
 
-  const resolver = makeResolverStub({
-    ...(apiKey !== undefined && { resolveApiKey: vi.fn(() => apiKey) }),
-    ...((pollingTimeout !== undefined || serverTimeout !== undefined) && {
-      resolvePollingTimeout: vi.fn(
-        async () => pollingTimeout ?? PollingTimeoutSettingsItem.defaultValue,
-      ),
-      resolveServerTimeout: vi.fn(
-        async () => serverTimeout ?? ServerTimeoutSettingsItem.defaultValue,
-      ),
-    }),
-  });
-
-  const server = new Server(resolver, {
-    baseUrl: baseUrl ?? defaultBaseUrl(),
-    customId,
-    customName,
-    overrides: modelOverrides,
+  const server = new Server(effectiveResolver, {
+    baseUrl: options?.baseUrl ?? defaultBaseUrl(),
+    customId: options?.customId,
+    customName: options?.customName,
+    overrides: options?.overrides,
   });
   if (models) server.models.push(...models);
-  return Object.assign(server, members, {
-    initialize: initialize ?? (async () => {}),
+  // Stub initialize to a no-op so seeded models aren't overwritten by
+  // network fetches — tests that need the real flow pass an override.
+  server.initialize = overrides?.initialize ?? (async () => {});
+  return Object.assign(server, overrides, {
+    initialize: server.initialize,
   });
 };
-
-/**
- * Stubs `Server.prototype.initialize` so `Server` instances built by
- * `ServerManager.update()` (from `ServerOptions`) come out pre-populated —
- * replaces the old pattern of injecting pre-built mock servers through
- * `resolveServers`. The optional `seed` callback receives each server
- * (push models, wire a fake `sse` slot, etc.); remember to restore mocks
- * after the test (`vi.restoreAllMocks()`).
- */
-export const stubInitialize = (seed?: (server: Server) => void) =>
-  vi.spyOn(Server.prototype, "initialize").mockImplementation(async function (
-    this: Server,
-  ) {
-    seed?.(this);
-  });

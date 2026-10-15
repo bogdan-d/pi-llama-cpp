@@ -313,9 +313,7 @@ describe("RouterModel unload", () => {
   });
 
   it("should throw on timeout before reaching UNLOADED", async () => {
-    const mockServer = createMockServer({
-      pollingTimeout: 100,
-    });
+    const mockServer = createMockServer();
     const model = new RouterModel(
       createModel(),
       mockServer,

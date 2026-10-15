@@ -15,9 +15,10 @@ import { createMockCtx } from "../mocks/context";
 import { createMockModel } from "../mocks/model";
 import { createMockPi } from "../mocks/context";
 import { createMockServer } from "../mocks/server";
+import { mockResolver, mockServerOptions } from "../mocks/server";
+import { createServerFactory } from "../mocks/serverFactory";
 import { makeSettingsStub } from "../mocks/settings";
 import { mockRpc } from "../mocks/rpc";
-import { stubInitialize } from "../mocks/server";
 
 beforeEach(() => {
   initTheme();
@@ -66,7 +67,7 @@ describe("CommandManager", () => {
   beforeEach(() => {
     mockPi = createMockPi();
     settingsStub = makeSettingsStub();
-    serverManager = new ServerManager(settingsStub);
+    serverManager = new ServerManager(settingsStub, createServerFactory());
     eventManager = createMockEventManager(serverManager, settingsStub);
     commandManager = new CommandManager(
       serverManager,
@@ -109,15 +110,20 @@ describe("CommandManager", () => {
     it("should unload all models when args is 'unload'", async () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
-      const server = createMockServer({
-        baseUrl: "http://127.0.0.1:9931",
-        models: [model1, model2],
-      });
+      const server = createMockServer(
+        undefined,
+        {
+          baseUrl: "http://127.0.0.1:9931",
+        },
+        [model1, model2],
+      );
       const unloadSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
-      stubInitialize((s) => s.models.push(...server.models));
-      serverManager = new ServerManager(unloadSettings);
+      serverManager = new ServerManager(unloadSettings, {
+        create: () =>
+          createMockServer(mockResolver, mockServerOptions, [...server.models]),
+      });
       const unloadEventManager = createMockEventManager(
         serverManager,
         unloadSettings,
@@ -148,15 +154,20 @@ describe("CommandManager", () => {
     it("should show model info when args is 'info'", async () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
-      const server = createMockServer({
-        baseUrl: "http://127.0.0.1:9931",
-        models: [model1, model2],
-      });
+      const server = createMockServer(
+        undefined,
+        {
+          baseUrl: "http://127.0.0.1:9931",
+        },
+        [model1, model2],
+      );
       const infoSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
-      stubInitialize((s) => s.models.push(...server.models));
-      serverManager = new ServerManager(infoSettings);
+      serverManager = new ServerManager(infoSettings, {
+        create: () =>
+          createMockServer(mockResolver, mockServerOptions, [...server.models]),
+      });
       const infoEventManager = createMockEventManager(
         serverManager,
         infoSettings,
@@ -552,14 +563,18 @@ describe("CommandManager", () => {
         ),
       });
       // Servers are built fresh by each scan; seed the mock models into
-      // them (keyed by baseUrl) via the initialize stub.
+      // them (keyed by baseUrl) via the server factory.
       const seededModels = [...models];
-      stubInitialize((server) =>
-        server.models.push(
-          ...seededModels.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: (_resolver, options) =>
+          createMockServer(
+            undefined,
+            {
+              baseUrl: options.baseUrl,
+            },
+            seededModels.filter((m) => m.serverUrl === options.baseUrl),
+          ),
+      });
       const factoryEventManager = createMockEventManager(
         serverManager,
         settingsStub,
@@ -694,12 +709,16 @@ describe("CommandManager", () => {
         ),
         resolveShowServerUrls: vi.fn(async () => false),
       });
-      stubInitialize((server) =>
-        server.models.push(
-          ...models.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: (_resolver, options) =>
+          createMockServer(
+            undefined,
+            {
+              baseUrl: options.baseUrl,
+            },
+            models.filter((m) => m.serverUrl === options.baseUrl),
+          ),
+      });
       const urlEventManager = createMockEventManager(
         serverManager,
         settingsStub,
@@ -732,12 +751,16 @@ describe("CommandManager", () => {
         ),
         resolveShowServerUrls: vi.fn(async () => true),
       });
-      stubInitialize((server) =>
-        server.models.push(
-          ...models.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: (_resolver, options) =>
+          createMockServer(
+            undefined,
+            {
+              baseUrl: options.baseUrl,
+            },
+            models.filter((m) => m.serverUrl === options.baseUrl),
+          ),
+      });
       const showUrlEventManager = createMockEventManager(
         serverManager,
         settingsStub,

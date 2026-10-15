@@ -5,6 +5,7 @@ import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
 import type { SettingsService } from "../../src/settings/settings";
 import { Server } from "../../src/server";
 import { createMockServer } from "../mocks/server";
+import { mockResolver, mockServerOptions } from "../mocks/server";
 import { installFetchStub, mockRpc } from "../mocks/rpc";
 import { makeResolverStub, makeSettingsStub } from "../mocks/settings";
 
@@ -179,11 +180,16 @@ describe("Server mode detection (via initialize)", () => {
         },
       });
 
-    const server = createMockServer({
-      initialize: async () => {
-        await Server.prototype.initialize.call(server);
+    const server = createMockServer(
+      mockResolver,
+      mockServerOptions,
+      undefined,
+      {
+        initialize: async () => {
+          await Server.prototype.initialize.call(server);
+        },
       },
-    });
+    );
     await server.initialize();
 
     expect(server.models[0].mode).toBe(Mode.LLAMASWAP);

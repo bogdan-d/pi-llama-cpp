@@ -10,12 +10,13 @@ import { PROVIDER_NAME } from "./constants";
 import { ModelSelectEvent } from "./interfaces/events";
 import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
+import { ServerFactory } from "./servers/serverFactory";
 import { SettingsService } from "./settings/settings";
 import { ServerManager } from "./managers/server";
 
 export default async function (pi: ExtensionAPI) {
   const settings = SettingsService.create();
-  const serverManager = new ServerManager(settings);
+  const serverManager = new ServerManager(settings, new ServerFactory());
   const eventManager = new EventManager(serverManager, settings);
   const commandManager = new CommandManager(
     serverManager,

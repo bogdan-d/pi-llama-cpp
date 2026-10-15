@@ -9,6 +9,7 @@ import {
   OverrideSummary,
 } from "../../src/ui/editors/override/fields";
 import { createMockServer } from "../mocks/server";
+import { mockResolver } from "../mocks/server";
 import { installFetchStub, mockRpc } from "../mocks/rpc";
 import { makeResolverStub } from "../mocks/settings";
 
@@ -26,7 +27,7 @@ const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
       owned_by: "test",
       created: Date.now(),
     },
-    createMockServer({ overrides }),
+    createMockServer(mockResolver, { overrides }),
     makeResolverStub(),
   );
 
@@ -45,7 +46,7 @@ const mockDetection = (nCtx: number | undefined) =>
 
 describe("Server.findOverrideForModel", () => {
   const makeServer = (overrides: Record<string, ModelOverride>): Server =>
-    createMockServer({ overrides });
+    createMockServer(mockResolver, { overrides });
 
   it("should match a model by id prefix", () => {
     const server = makeServer({ lla: { reasoning: false } });

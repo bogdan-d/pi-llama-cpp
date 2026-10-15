@@ -3,6 +3,7 @@ import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { LlamaSwapModel } from "../../src/models/llamaSwapModel";
 import { createMockServer } from "../mocks/server";
+import { mockResolver } from "../mocks/server";
 import { installFetchStub, mockRpc } from "../mocks/rpc";
 import { makeResolverStub } from "../mocks/settings";
 
@@ -13,7 +14,7 @@ beforeEach(() => {
 
 const createModel = (
   extra: Partial<Record<string, unknown>> = {},
-  serverOverrides: Parameters<typeof createMockServer>[0] = {},
+  serverOptions: Partial<Parameters<typeof createMockServer>[1]> = {},
 ): LlamaSwapModel =>
   new LlamaSwapModel(
     {
@@ -25,7 +26,10 @@ const createModel = (
       created: Date.now(),
       ...extra,
     } as any,
-    createMockServer({ baseUrl: "http://127.0.0.1:9931", ...serverOverrides }),
+    createMockServer(mockResolver, {
+      baseUrl: "http://127.0.0.1:9931",
+      ...serverOptions,
+    }),
     makeResolverStub(),
   );
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { SSEManager } from "../../src/sse/manager";
 import { createMockServer } from "../mocks/server";
+import { mockResolver } from "../mocks/server";
 import { makeResolverStub } from "../mocks/settings";
 
 /**
@@ -12,10 +13,8 @@ const createManager = (
   serverTimeout = 1000,
 ): SSEManager =>
   new SSEManager(
-    createMockServer({
+    createMockServer(mockResolver, {
       baseUrl: "http://127.0.0.1:9931",
-      pollingTimeout,
-      serverTimeout,
     }),
     makeResolverStub({
       resolvePollingTimeout: vi.fn(async () => pollingTimeout),
