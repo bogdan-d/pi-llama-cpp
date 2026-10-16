@@ -1,14 +1,13 @@
-import { initTheme, type Theme } from "@earendil-works/pi-coding-agent";
-import {
-  getKeybindings,
-  type KeybindingsManager,
-  type TUI,
-} from "@earendil-works/pi-tui";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LlamaServer } from "../../src/interfaces/settings";
 import { ConfirmDialog } from "../../src/ui/dialog/confirm";
 import { InputDialog } from "../../src/ui/dialog/input";
 import { OverrideSettingsList } from "../../src/ui/editors/override/overrideList";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
+import { createMockKeybindings } from "../mocks/keybindings";
+import { createMockTui } from "../mocks/tui";
+import { createMockTheme } from "../mocks/theme";
 
 beforeEach(() => {
   initTheme();
@@ -17,16 +16,6 @@ beforeEach(() => {
 
 const ESC = "\x1b";
 const ENTER = "\r";
-
-const createMockTheme = (): Theme =>
-  ({
-    fg: (_color: string, text: string) => text,
-    bold: (text: string) => text,
-  }) as unknown as Theme;
-
-const createMockTui = (): TUI => ({ requestRender: vi.fn() }) as unknown as TUI;
-
-const createKeybindings = (): KeybindingsManager => getKeybindings();
 
 describe("InputDialog", () => {
   const build = (
@@ -134,8 +123,8 @@ describe("ServerSettingsList add wizard", () => {
     const editor = new ServerSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
-      servers: servers as never[],
+      keybindings: createMockKeybindings(),
+      servers: servers as LlamaServer[],
       persist,
       done,
       onError,
@@ -196,13 +185,13 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
     const list = new OverrideSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
+      keybindings: createMockKeybindings(),
       servers: [
         {
           url: "http://x:1",
           overrides: { "gpt-*": { cost: { input: 0.2 } } },
         },
-      ] as never[],
+      ] as LlamaServer[],
       persist,
       done: vi.fn(),
       onError: vi.fn(),
@@ -237,13 +226,13 @@ describe("OverrideSettingsList escape navigation", () => {
     const list = new OverrideSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
+      keybindings: createMockKeybindings(),
       servers: [
         {
           url: "http://x:1",
           overrides: { "gpt-*": { cost: { input: 0.2 } } },
         },
-      ] as never[],
+      ] as LlamaServer[],
       persist: vi.fn().mockResolvedValue(undefined),
       done,
       onError: vi.fn(),

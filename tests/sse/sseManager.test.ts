@@ -1,16 +1,20 @@
+import type { SSEClient } from "../../src/sse/client";
 import { describe, expect, it, vi } from "vitest";
 import { SSEManager } from "../../src/sse/manager";
 import { createMockServer } from "../mocks/server";
 import { mockResolver } from "../mocks/server";
+import { createMockSSEClient, dispatchToMockClient } from "../mocks/sseClient";
 import { makeResolverStub } from "../mocks/settings";
 
 /**
  * Builds an SSEManager bound to a stub server, mirroring how
  * `Server.initialize()` wires it up (timeouts come from the resolver).
+ * Optionally injects an SSEClient for test control.
  */
 const createManager = (
   pollingTimeout = 60000,
   serverTimeout = 1000,
+  sseClient?: SSEClient,
 ): SSEManager =>
   new SSEManager(
     createMockServer(mockResolver, {
@@ -20,6 +24,7 @@ const createManager = (
       resolvePollingTimeout: vi.fn(async () => pollingTimeout),
       resolveServerTimeout: vi.fn(async () => serverTimeout),
     }),
+    sseClient,
   );
 
 describe("SSEManager subscribeToStatus", () => {
@@ -50,14 +55,11 @@ describe("SSEManager subscribeToStatus", () => {
 
   it("should resolve when a terminal status arrives before the timeout", async () => {
     vi.useFakeTimers();
-    // Never-resolving fetch: events are dispatched manually below
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Promise<Response>(() => {})),
-    );
+    // Inject a mock SSEClient so the test can emit events manually
+    const mockClient = createMockSSEClient();
 
     try {
-      const manager = createManager(5000);
+      const manager = createManager(5000, 1000, mockClient);
       const promise = manager.subscribeToStatus("test-model");
       const expectation = expect(promise).resolves.toMatchObject({
         status: "loaded",
@@ -66,10 +68,8 @@ describe("SSEManager subscribeToStatus", () => {
       manager.subscribeToProgress("test-model", () => {});
       await vi.advanceTimersByTimeAsync(0);
 
-      // Emit a terminal status through the shared client's dispatch path
-      const client = (manager as any).sseClient;
-      const handler = client.subscribers.get("test-model");
-      handler({
+      // Emit a terminal status through the injected client
+      dispatchToMockClient(mockClient, {
         event: "status_change",
         model: "test-model",
         data: { status: "loaded" },

@@ -27,6 +27,12 @@ export class EventManager {
    */
   static inflightModel: BaseModel | null = null;
 
+  /**
+   * Promise of the in-flight load. Used by `autoLoadIfNeeded` to wait
+   * for a model that is already loading (e.g. triggered via `/models`).
+   */
+  static inflightPromise: Promise<void> | null = null;
+
   constructor(
     private readonly serverManager: ServerManager,
     private readonly settings: SettingsService,
@@ -68,7 +74,8 @@ export class EventManager {
   }
 
   /**
-   * Loads the model if auto-loading is enabled and the model is unloaded.
+   * Loads the model if auto-loading is enabled and the model is unloaded,
+   * or waits for an in-flight load if the model is already loading.
    *
    * @param model The model to potentially auto-load
    * @param ctx Pi context
@@ -82,9 +89,15 @@ export class EventManager {
     if (!(await this.settings.resolveAutoloadOnMessage())) return;
 
     const status = await model.getStatus();
-    if (status !== Status.UNLOADED) return;
+    if (status === Status.UNLOADED) {
+      await this.loadWithFeedback(model, ctx, pi);
+      return;
+    }
 
-    await this.loadWithFeedback(model, ctx, pi);
+    // If the model is already loading (e.g. from /models), wait for it.
+    if (status === Status.LOADING && EventManager.inflightModel === model) {
+      await EventManager.inflightPromise;
+    }
   }
 
   /**
@@ -188,7 +201,7 @@ export class EventManager {
     }
 
     // Execute the loading process
-    try {
+    const loadPromise = (async () => {
       await model.load();
 
       if ((await model.getStatus()) === Status.FAILED)
@@ -199,11 +212,18 @@ export class EventManager {
       const { serverId } = model;
       const piModel = ctx.modelRegistry.find(serverId, model.id);
       if (piModel) await pi.setModel(piModel);
+    })();
+
+    EventManager.inflightPromise = loadPromise;
+
+    try {
+      await loadPromise;
     } catch (err) {
       ctx.ui.notify(errorMessage(err), "error");
     } finally {
       cleanupProgress();
       EventManager.resetInflightModel();
+      EventManager.inflightPromise = null;
 
       // Re-scan providers so the model registry reflects the new state
       await this.serverManager.update(pi);

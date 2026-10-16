@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { ServerOptions } from "../../src/interfaces/server";
+import { ServerStatus } from "../../src/enums/serverStatus";
 import { ServerManager } from "../../src/managers/server";
-import { BaseModel } from "../../src/models/baseModel";
 import { createMockModel } from "../mocks/model";
+import { createMockServer } from "../mocks/server";
 import { createSeededServerFactory } from "../mocks/serverFactory";
 import { makeSettingsStub } from "../mocks/settings";
 import { mockRpc } from "../mocks/rpc";
@@ -13,12 +15,12 @@ import { mockRpc } from "../mocks/rpc";
 // singleton.
 const settingsStub = makeSettingsStub();
 
-const mockPi = {
+const mockPi: ExtensionAPI = {
   registerProvider: vi.fn(),
   unregisterProvider: vi.fn(),
   registerCommand: vi.fn(),
   setModel: vi.fn(),
-};
+} as Partial<ExtensionAPI> as ExtensionAPI;
 
 /** ServerOptions for a baseUrl — the shape `resolveServerConfigs` yields. */
 const configOf = (
@@ -49,11 +51,9 @@ afterEach(() => {
 
 describe("ServerManager", () => {
   it("should register providers for all servers", async () => {
-    const mockModel = {
-      name: "test-model",
-      id: "test-model",
+    const mockModel = createMockModel("test-model", {
       toProviderConfig: vi.fn().mockResolvedValue({ id: "test-model" }),
-    } as unknown as BaseModel;
+    });
     vi.mocked(settingsStub.resolveApiKey).mockImplementation((id) =>
       id.includes("9931") ? "key-1" : "key-2",
     );
@@ -68,7 +68,7 @@ describe("ServerManager", () => {
       configOf("http://127.0.0.1:9931"),
       configOf("http://127.0.0.1:8081"),
     ]);
-    await manager.update(mockPi as any);
+    await manager.update(mockPi);
 
     expect(mockPi.registerProvider).toHaveBeenCalledTimes(2);
     expect(mockPi.registerProvider).toHaveBeenCalledWith(
@@ -105,7 +105,7 @@ describe("ServerManager", () => {
       configOf("http://127.0.0.1:9931"),
       configOf("http://127.0.0.1:8081"),
     ]);
-    await manager.update(mockPi as any);
+    await manager.update(mockPi);
 
     const allModels = await manager.getAllModels();
 
@@ -133,14 +133,14 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
       expect(manager.servers).toHaveLength(1);
 
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
         configOf("http://127.0.0.1:8081"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       expect(mockPi.registerProvider).toHaveBeenCalledWith(
         "llama-server=http://127.0.0.1:8081",
@@ -179,13 +179,13 @@ describe("ServerManager", () => {
         configOf("http://127.0.0.1:9931"),
         configOf("http://127.0.0.1:8081"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
       expect(manager.servers).toHaveLength(2);
 
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       expect(mockPi.unregisterProvider).toHaveBeenCalledTimes(1);
       expect(mockPi.unregisterProvider).toHaveBeenCalledWith(
@@ -214,12 +214,12 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9090"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       expect(mockPi.unregisterProvider).toHaveBeenCalledWith(
         "llama-server=http://127.0.0.1:9931",
@@ -244,7 +244,7 @@ describe("ServerManager", () => {
           customName: "A",
         }),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931", {
@@ -252,7 +252,7 @@ describe("ServerManager", () => {
           customName: "B",
         }),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       expect(mockPi.unregisterProvider).not.toHaveBeenCalled();
       expect(vi.mocked(mockPi.registerProvider).mock.calls.at(-1)).toEqual([
@@ -275,7 +275,7 @@ describe("ServerManager", () => {
         configOf("http://127.0.0.1:9931"),
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       expect(manager.servers).toHaveLength(1);
       expect(mockPi.registerProvider).toHaveBeenCalledTimes(1);
@@ -294,13 +294,136 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const live = (await manager.getAllModels())[0];
       expect(manager.getServer(live)).toBe(manager.servers[0]);
 
-      const orphan = { serverUrl: "http://gone:1" } as unknown as BaseModel;
+      const orphan = createMockModel("orphan", { serverUrl: "http://gone:1" });
       expect(manager.getServer(orphan)).toBeUndefined();
+    });
+  });
+
+  describe("timeout → skip → retry via /models", () => {
+    it("should skip a TIMEOUT server on init, then register it on /models", async () => {
+      // Create real servers we can spy on
+      const server1 = createMockServer(undefined, {
+        baseUrl: "http://127.0.0.1:9931",
+      });
+      const server2 = createMockServer(undefined, {
+        baseUrl: "http://127.0.0.1:8081",
+      });
+
+      // Server1 will timeout during health check
+      vi.spyOn(server1, "isReady").mockResolvedValue(ServerStatus.TIMEOUT);
+      vi.spyOn(server2, "isReady").mockResolvedValue(ServerStatus.READY);
+
+      const manager = new ServerManager(settingsStub, {
+        create: (_resolver, options) => {
+          return options.baseUrl === "http://127.0.0.1:9931"
+            ? server1
+            : server2;
+        },
+      });
+
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+        configOf("http://127.0.0.1:8081"),
+      ]);
+
+      // Phase 1: initialize with timeout → server1 is skipped
+      await manager.update(mockPi, 100);
+
+      expect(mockPi.registerProvider).toHaveBeenCalledTimes(1);
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "llama-server=http://127.0.0.1:8081",
+        expect.objectContaining({ baseUrl: "http://127.0.0.1:8081/v1" }),
+      );
+      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getWarnings()).toHaveLength(1);
+
+      // Phase 2: /models without timeout → both register
+      vi.mocked(mockPi.registerProvider).mockClear();
+
+      await manager.update(mockPi);
+
+      expect(mockPi.registerProvider).toHaveBeenCalledTimes(2);
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "llama-server=http://127.0.0.1:9931",
+        expect.objectContaining({ baseUrl: "http://127.0.0.1:9931/v1" }),
+      );
+    });
+
+    it("should skip an UNREACHABLE server on init, then register it on /models", async () => {
+      const server1 = createMockServer(undefined, {
+        baseUrl: "http://127.0.0.1:9931",
+      });
+      const server2 = createMockServer(undefined, {
+        baseUrl: "http://127.0.0.1:8081",
+      });
+
+      // Server1 returns UNREACHABLE (non-200, non-timeout)
+      vi.spyOn(server1, "isReady").mockResolvedValue(ServerStatus.UNREACHABLE);
+      vi.spyOn(server2, "isReady").mockResolvedValue(ServerStatus.READY);
+
+      const manager = new ServerManager(settingsStub, {
+        create: (_resolver, options) => {
+          return options.baseUrl === "http://127.0.0.1:9931"
+            ? server1
+            : server2;
+        },
+      });
+
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+        configOf("http://127.0.0.1:8081"),
+      ]);
+
+      // Phase 1: with timeout → server1 is UNREACHABLE, skipped
+      await manager.update(mockPi, 100);
+
+      expect(mockPi.registerProvider).toHaveBeenCalledTimes(1);
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "llama-server=http://127.0.0.1:8081",
+        expect.objectContaining({ baseUrl: "http://127.0.0.1:8081/v1" }),
+      );
+      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getWarnings()).toHaveLength(1);
+
+      // Phase 2: /models without timeout → both register
+      vi.mocked(mockPi.registerProvider).mockClear();
+
+      await manager.update(mockPi);
+
+      expect(mockPi.registerProvider).toHaveBeenCalledTimes(2);
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "llama-server=http://127.0.0.1:9931",
+        expect.objectContaining({ baseUrl: "http://127.0.0.1:9931/v1" }),
+      );
+    });
+  });
+
+  describe("registerProvider error handling", () => {
+    it("should add the URL to failedUrls when initialize throws a non-auth error", async () => {
+      const server = createMockServer(undefined, {
+        baseUrl: "http://127.0.0.1:9931",
+      });
+      // Simulate a non-auth error during initialization
+      vi.spyOn(server, "initialize").mockRejectedValue(
+        new Error("Network error"),
+      );
+
+      const manager = new ServerManager(settingsStub, {
+        create: () => server,
+      });
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+      ]);
+
+      await manager.update(mockPi);
+
+      expect(mockPi.registerProvider).not.toHaveBeenCalled();
+      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
     });
   });
 
@@ -321,7 +444,7 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const allModels = await manager.getAllModels();
 
@@ -345,7 +468,7 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const allModels = await manager.getAllModels();
 
@@ -369,7 +492,7 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const allModels = await manager.getAllModels();
 
@@ -393,7 +516,7 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const allModels = await manager.getAllModels();
 
@@ -417,7 +540,7 @@ describe("ServerManager", () => {
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),
       ]);
-      await manager.update(mockPi as any);
+      await manager.update(mockPi);
 
       const allModels = await manager.getAllModels();
 

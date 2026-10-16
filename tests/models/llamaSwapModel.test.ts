@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { DataProperty } from "../../src/interfaces/endpoints/models";
 import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { LlamaSwapModel } from "../../src/models/llamaSwapModel";
@@ -25,7 +26,7 @@ const createModel = (
       owned_by: "test",
       created: Date.now(),
       ...extra,
-    } as any,
+    } as DataProperty,
     createMockServer(mockResolver, {
       baseUrl: "http://127.0.0.1:9931",
       ...serverOptions,

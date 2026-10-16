@@ -4,6 +4,7 @@ import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTime
 import { ServerTimeoutSettingsItem } from "../../src/settings/items/serverTimeout";
 import type { ServerSettingsResolver } from "../../src/interfaces/server";
 import type { ServerOptions } from "../../src/interfaces/server";
+import { SSEManager } from "../../src/sse/manager";
 import { makeResolverStub } from "./settings";
 import { BaseModel } from "../../src/models/baseModel";
 import { Server } from "../../src/server";
@@ -42,6 +43,7 @@ export const createMockServer = (
   options?: Partial<ServerOptions>,
   models?: BaseModel[],
   overrides?: Partial<Server>,
+  sse?: { disconnect: () => void },
 ): Server => {
   const effectiveResolver = resolver ?? defaultResolver;
 
@@ -52,9 +54,16 @@ export const createMockServer = (
     overrides: options?.overrides,
   });
   if (models) server.models.push(...models);
+  // Create an SSEManager so `server.sseManager` is available for tests
+  // that call `probeSSE()` etc. — initialize() would do this in real code.
+  server["sse"] = new SSEManager(server, effectiveResolver);
   // Stub initialize to a no-op so seeded models aren't overwritten by
   // network fetches — tests that need the real flow pass an override.
   server.initialize = overrides?.initialize ?? (async () => {});
+  if (sse) {
+    const sseManager = server["sse"] as SSEManager;
+    sseManager.disconnect = sse.disconnect;
+  }
   return Object.assign(server, overrides, {
     initialize: server.initialize,
   });
@@ -68,10 +77,7 @@ export const createTestServer = (
   baseUrl: string,
   models: BaseModel[],
   disconnects?: () => void,
-): Server => {
-  const server = createMockServer(mockResolver, { baseUrl }, models);
-  if (disconnects) {
-    (server as any).sse = { disconnect: disconnects };
-  }
-  return server;
-};
+): Server =>
+  createMockServer(mockResolver, { baseUrl }, models, undefined, {
+    disconnect: disconnects!,
+  });

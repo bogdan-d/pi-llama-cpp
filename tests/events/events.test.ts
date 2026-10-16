@@ -1,3 +1,10 @@
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import type { ModelSelectEvent } from "../../src/interfaces/events";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { THINKING_BUDGETS } from "../../src/constants";
 import { defaultBaseUrl } from "../constants";
@@ -24,20 +31,21 @@ let mockPi = createMockPi();
  * `getServer`. (The real ServerManager is exercised in the live-list test
  * below.)
  */
+const createStubServerManager = (servers: Server[]): ServerManager =>
+  ({
+    servers,
+    getServer: (model: BaseModel) =>
+      servers.find((s) => s.models.some((m) => m.id === model.id)),
+    update: vi.fn(async () => {}),
+  }) as Partial<ServerManager> as ServerManager;
+
 const createEventManager = (...servers: Server[]) =>
-  new EventManager(
-    {
-      servers,
-      getServer: (model: BaseModel) =>
-        servers.find((s) => s.models.some((m) => m.id === model.id)),
-      update: vi.fn(async () => {}),
-    } as unknown as ServerManager,
-    settingsStub,
-  );
+  new EventManager(createStubServerManager(servers), settingsStub);
 
 beforeEach(() => {
   vi.restoreAllMocks();
   EventManager.resetInflightModel();
+  EventManager.inflightPromise = null;
   settingsStub = makeSettingsStub();
   mockPi = createMockPi();
 });
@@ -52,20 +60,31 @@ const createNonLlamaPayload = () => ({
   messages: [{ role: "user", content: "hello" }],
 });
 
-const createMockCtx = (
-  thinkingLevel?:
-    | "off"
-    | "minimal"
-    | "low"
-    | "medium"
-    | "high"
-    | "xhigh"
-    | "max",
-) =>
+/** Build a typed BeforeProviderRequestEvent. */
+const createBeforeProviderRequestEvent = (
+  payload: Record<string, unknown>,
+) => ({
+  type: "before_provider_request" as const,
+  payload,
+});
+
+/** Build a typed ModelSelectEvent. */
+const createModelSelectEvent = (
+  providerId: string,
+  modelId: string,
+): ModelSelectEvent =>
+  ({
+    type: "model_select",
+    model: { provider: providerId, id: modelId },
+    previousModel: undefined,
+    source: "set",
+  }) as Partial<ModelSelectEvent> as ModelSelectEvent;
+
+const createMockCtx = (thinkingLevel?: ThinkingLevel): ExtensionContext =>
   ({
     thinkingLevel,
     ui: { notify: vi.fn(), setStatus: vi.fn() },
-  }) as any;
+  }) as unknown as ExtensionContext;
 
 describe("EventManager.onBeforeProviderRequest", () => {
   describe("normal usage — each thinking level", () => {
@@ -84,7 +103,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
       'level "$level" should return $expected',
       async ({ level, expected }) => {
         vi.mocked(settingsStub.resolveThinkingLevel).mockReturnValue(
-          level as any,
+          level as ModelThinkingLevel,
         );
 
         const server = createMockServer(
@@ -93,13 +112,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
           ["model-a"].map((id) => createMockModel(id)),
         );
         const eventManager = createEventManager(server);
-        const event = { payload: createPayload("model-a") };
 
-        const ctx = createMockCtx(level as any);
+        const ctx = createMockCtx(level as ThinkingLevel);
         const result = (await eventManager.onBeforeProviderRequest(
-          event as any,
+          createBeforeProviderRequestEvent(createPayload("model-a")),
           ctx,
-          mockPi as any,
+          mockPi,
         )) as Record<string, unknown>;
 
         expect(result.model).toBe("model-a");
@@ -116,19 +134,16 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-b"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = {
-        payload: {
-          model: "model-b",
-          messages: [{ role: "user", content: "test" }],
-          temperature: 0.7,
-        },
-      };
 
       const ctx = createMockCtx("low");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent({
+          model: "model-b",
+          messages: [{ role: "user", content: "test" }],
+          temperature: 0.7,
+        }),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       expect(result.messages).toEqual([{ role: "user", content: "test" }]);
@@ -145,13 +160,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createNonLlamaPayload() };
 
       const ctx = createMockCtx();
       const result = await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createNonLlamaPayload()),
         ctx,
-        mockPi as any,
+        mockPi,
       );
 
       expect(result).toEqual(createNonLlamaPayload());
@@ -166,13 +180,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: { messages: [] } };
 
       const ctx = createMockCtx();
       const result = await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent({ messages: [] }),
         ctx,
-        mockPi as any,
+        mockPi,
       );
 
       expect(result).toEqual({ messages: [] });
@@ -193,13 +206,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("low");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       expect(result.thinking_budget_tokens).toBe(4096);
@@ -218,13 +230,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("medium");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       // medium uses default since user only overrode low
@@ -241,7 +252,7 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ...THINKING_BUDGETS,
         foo: 999,
         bar: 123,
-      } as any);
+      } as Record<string, number>);
 
       const server = createMockServer(
         undefined,
@@ -249,13 +260,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("medium");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       // Should fall back to default since "medium" is not in user budgets
@@ -275,13 +285,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("off");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       expect(result).toMatchObject({
@@ -303,13 +312,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("max");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       expect(result).toEqual(createPayload("model-a"));
@@ -329,13 +337,12 @@ describe("EventManager.onBeforeProviderRequest", () => {
         ["model-a"].map((id) => createMockModel(id)),
       );
       const eventManager = createEventManager(server);
-      const event = { payload: createPayload("model-a") };
 
       const ctx = createMockCtx("high");
       const result = (await eventManager.onBeforeProviderRequest(
-        event as any,
+        createBeforeProviderRequestEvent(createPayload("model-a")),
         ctx,
-        mockPi as any,
+        mockPi,
       )) as Record<string, unknown>;
 
       expect(result.thinking_budget_tokens).toBe(THINKING_BUDGETS.high);
@@ -357,11 +364,9 @@ describe("EventManager.onModelSelect", () => {
     const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
-    const event = {
-      model: { provider: server.providerId, id: "model-a" },
-    } as any;
+    const event = createModelSelectEvent(server.providerId, "model-a");
 
-    await eventManager.onModelSelect(event, ctx, mockPi as any);
+    await eventManager.onModelSelect(event, ctx, mockPi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Loading model-a...", "info");
   });
@@ -377,17 +382,15 @@ describe("EventManager.onModelSelect", () => {
     const eventManager = createEventManager(server);
     const ctx = createMockCtx();
 
-    const event = {
-      model: { provider: server.providerId, id: "model-a" },
-    } as any;
+    const event = createModelSelectEvent(server.providerId, "model-a");
 
-    await eventManager.onModelSelect(event, ctx, mockPi as any);
+    await eventManager.onModelSelect(event, ctx, mockPi);
 
     expect(ctx.ui.notify).not.toHaveBeenCalled();
   });
 });
 
-describe("EventManager.autoLoadIfNeeded", () => {
+describe("EventManager.autoLoadIfNeeded (via onBeforeProviderRequest)", () => {
   it("should load the model when autoloadOnMessage is true and model is UNLOADED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
@@ -398,12 +401,15 @@ describe("EventManager.autoLoadIfNeeded", () => {
       }),
     ]);
     const eventManager = createEventManager(server);
-    const model = server.models[0];
     const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
 
-    expect(model.load).toHaveBeenCalled();
+    expect(server.models[0].load).toHaveBeenCalled();
     expect(ctx.ui.notify).toHaveBeenCalledWith("Loading model-a...", "info");
   });
 
@@ -417,12 +423,15 @@ describe("EventManager.autoLoadIfNeeded", () => {
       }),
     ]);
     const eventManager = createEventManager(server);
-    const model = server.models[0];
     const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
 
-    expect(model.load).not.toHaveBeenCalled();
+    expect(server.models[0].load).not.toHaveBeenCalled();
   });
 
   it("should not load the model when model is already LOADED", async () => {
@@ -435,12 +444,15 @@ describe("EventManager.autoLoadIfNeeded", () => {
       }),
     ]);
     const eventManager = createEventManager(server);
-    const model = server.models[0];
     const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
 
-    expect(model.load).not.toHaveBeenCalled();
+    expect(server.models[0].load).not.toHaveBeenCalled();
   });
 
   it("should not load the model when model is SLEEPING", async () => {
@@ -453,12 +465,82 @@ describe("EventManager.autoLoadIfNeeded", () => {
       }),
     ]);
     const eventManager = createEventManager(server);
-    const model = server.models[0];
     const ctx = createMockCtx();
 
-    await (eventManager as any).autoLoadIfNeeded(model, ctx, mockPi);
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
 
+    expect(server.models[0].load).not.toHaveBeenCalled();
+  });
+
+  it("should wait for an in-flight load when model is LOADING", async () => {
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
+
+    let loadResolve!: () => void;
+    const loadPromise = new Promise<void>((resolve) => {
+      loadResolve = resolve;
+    });
+    const model = createMockModel("model-a", {
+      getStatus: vi.fn().mockResolvedValue(Status.LOADING),
+      load: vi.fn().mockReturnValue(loadPromise),
+    });
+
+    // Simulate a prior /models load: set inflightModel and inflightPromise
+    EventManager.inflightModel = model;
+    EventManager.inflightPromise = loadPromise;
+
+    const server = createTestServer(defaultBaseUrl(), [model]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    const before = Date.now();
+    const requestPromise = eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
+
+    // Delay resolving the in-flight load so we can measure the wait
+    setTimeout(() => loadResolve!(), 50);
+
+    await requestPromise;
+    const elapsed = Date.now() - before;
+
+    // Should NOT call load again (it was already in-flight)
     expect(model.load).not.toHaveBeenCalled();
+    // Should have waited for the inflight load to complete
+    expect(elapsed).toBeGreaterThanOrEqual(40);
+  });
+});
+
+describe("EventManager.loadWithFeedback with SSE", () => {
+  it("should subscribe to SSE progress when the server supports it", async () => {
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
+    vi.mocked(settingsStub.resolveEnableSSE).mockResolvedValue(true);
+
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    // Make probeSSE return true so the SSE path is taken
+    vi.spyOn(server.sseManager!, "probeSSE").mockResolvedValue(true);
+
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-a")),
+      ctx,
+      mockPi,
+    );
+
+    // loadWithFeedback fires immediately with the loading notification
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Loading model-a...", "info");
   });
 });
 
@@ -481,8 +563,11 @@ describe("EventManager with a live ServerManager", () => {
             : [createMockModel("model-a", { serverUrl: options.baseUrl })],
         ),
     });
-    const mockPi = { registerProvider: vi.fn(), unregisterProvider: vi.fn() };
-    await serverManager.update(mockPi as any);
+    const mockPi: ExtensionAPI = {
+      registerProvider: vi.fn(),
+      unregisterProvider: vi.fn(),
+    } as Partial<ExtensionAPI> as ExtensionAPI;
+    await serverManager.update(mockPi);
 
     const eventManager = new EventManager(serverManager, settingsStub);
 
@@ -491,14 +576,14 @@ describe("EventManager with a live ServerManager", () => {
       { baseUrl: "http://127.0.0.1:9931" },
       { baseUrl: "http://127.0.0.1:8081" },
     ]);
-    await serverManager.update(mockPi as any);
+    await serverManager.update(mockPi);
 
     // onBeforeProviderRequest sees the new server's models
     const ctx = createMockCtx("medium");
     const result = (await eventManager.onBeforeProviderRequest(
-      { payload: createPayload("model-b") } as any,
+      createBeforeProviderRequestEvent(createPayload("model-b")),
       ctx,
-      mockPi as any,
+      mockPi,
     )) as Record<string, unknown>;
     expect(result.thinking_budget_tokens).toBe(THINKING_BUDGETS.medium);
 
@@ -506,14 +591,9 @@ describe("EventManager with a live ServerManager", () => {
     vi.mocked(settingsStub.resolveReactToModelSelect).mockResolvedValue(true);
     const selectCtx = createMockCtx();
     await eventManager.onModelSelect(
-      {
-        model: {
-          provider: "llama-server=http://127.0.0.1:8081",
-          id: "model-b",
-        },
-      } as any,
+      createModelSelectEvent("llama-server=http://127.0.0.1:8081", "model-b"),
       selectCtx,
-      mockPi as any,
+      mockPi,
     );
     expect(selectCtx.ui.notify).toHaveBeenCalledWith(
       "Loading model-b...",

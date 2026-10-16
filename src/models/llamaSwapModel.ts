@@ -76,7 +76,6 @@ export class LlamaSwapModel extends BaseModel {
     try {
       await this.server.llamaSwapLoad(this.id);
     } catch (err) {
-      console.warn({ err });
       throw new Error(`Model loading failed: ${this.id}`);
     }
   }

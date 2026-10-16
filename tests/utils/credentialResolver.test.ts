@@ -7,7 +7,8 @@ describe("CredentialResolver", () => {
   describe("resolve", () => {
     it("returns placeholder for empty key", () => {
       expect(resolver.resolve("")).toBe("sk-placeholder");
-      expect(resolver.resolve(undefined as any)).toBe("sk-placeholder");
+      // @ts-expect-error — verifying undefined falls back to placeholder
+      expect(resolver.resolve(undefined)).toBe("sk-placeholder");
     });
 
     it("returns literal key as-is", () => {

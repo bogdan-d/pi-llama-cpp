@@ -16,7 +16,7 @@ import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 export class SSEClient {
   private abortController: AbortController | null = null;
   private disposed: boolean = false;
-  private subscribers: Map<string, SSECallback> = new Map();
+  subscribers: Map<string, SSECallback> = new Map();
   private connected: boolean = false;
   private reconnecting: boolean = false; // tracks if reconnect is in progress
   /**

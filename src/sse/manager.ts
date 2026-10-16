@@ -29,7 +29,10 @@ export class SSEManager {
   constructor(
     private readonly server: Server,
     private readonly resolver: ServerSettingsResolver,
-  ) {}
+    sseClient?: SSEClient,
+  ) {
+    this.sseClient = sseClient ?? null;
+  }
 
   /**
    * The SSE endpoint URL.

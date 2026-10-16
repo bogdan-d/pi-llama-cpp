@@ -1,5 +1,6 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import {
   API_KEY_PLACEHOLDER,
   LLAMA_SERVER_URL,
@@ -694,11 +695,11 @@ describe("setLlamaSettings", () => {
 
   it("should construct the manager with reader and writer injected", () => {
     const reader = new SettingsReader(
-      mockSettingsManager as any,
+      mockSettingsManager as unknown as SettingsManager,
       new CredentialResolver(),
     );
     const writer = new SettingsWriter(
-      mockSettingsManager as any,
+      mockSettingsManager as unknown as SettingsManager,
       new SettingsStore("/fake/agent/dir/settings.json"),
       new SettingsStore("/fake/project/.pi/settings.json"),
     );
@@ -942,7 +943,7 @@ describe("resolveServerConfigs passes overrides", () => {
 
 describe("Server.findOverrideForModel", () => {
   function createServer(overrides: Record<string, ModelOverride>): Server {
-    return new Server(SettingsService.create() as any, {
+    return new Server(SettingsService.create(), {
       baseUrl: "http://127.0.0.1:9931",
       overrides,
     });

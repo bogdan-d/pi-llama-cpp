@@ -1,31 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { Mode } from "../../src/enums/mode";
-import type { ModelsEndpoint } from "../../src/interfaces/endpoints/models";
-import type { LlamaSwapPropsError } from "../../src/interfaces/endpoints/props";
+import type {
+  DataProperty,
+  ModelsEndpoint,
+} from "../../src/interfaces/endpoints/models";
+import type {
+  LlamaSwapPropsError,
+  PropsEndpoint,
+} from "../../src/interfaces/endpoints/props";
 import { detectMode } from "../../src/utils/detectMode";
 
-const routerProps = {
+const routerProps: PropsEndpoint = {
   role: "router",
-  default_generation_settings: {},
-  total_slots: 2,
+  max_instances: 2,
+  models_autoload: false,
   model_alias: "",
   model_path: "",
-  modalities: { vision: false, audio: false },
-  media_marker: "",
-  endpoint_slots: false,
-  endpoint_props: false,
-  endpoint_metrics: false,
-  webui: false,
-  webui_settings: {},
-  chat_template: "",
-  chat_template_caps: {},
-  bos_token: "",
-  eos_token: "",
+  default_generation_settings: {},
+  ui_settings: {},
   build_info: "",
-  is_sleeping: false,
-} as any;
+  cors_proxy_enabled: false,
+};
 
-const llamaSwapProps = {
+const llamaSwapProps: LlamaSwapPropsError = {
   src: "llama-swap",
   error: {
     message: "no model id could be identified",
@@ -33,12 +30,16 @@ const llamaSwapProps = {
     param: null,
     code: "not_found",
   },
-} as any as LlamaSwapPropsError;
+};
 
-const singleProps = { ...routerProps, role: undefined } as any;
+const singleProps = {
+  ...routerProps,
+  role: undefined,
+} as Partial<PropsEndpoint>;
 
-const data = (first: Record<string, unknown>): ModelsEndpoint["data"] =>
-  [first as any] as ModelsEndpoint["data"];
+const data = (first: Partial<DataProperty>): ModelsEndpoint["data"] => [
+  first as DataProperty,
+];
 
 describe("detectMode", () => {
   it("should detect LLAMASWAP when /props carries the llama-swap discriminator", () => {
@@ -51,11 +52,19 @@ describe("detectMode", () => {
 
   it("should detect LEGACY when the first model carries max_model_len", () => {
     expect(
-      detectMode(singleProps, data({ id: "m", max_model_len: 4096 })),
+      detectMode(
+        singleProps as PropsEndpoint | LlamaSwapPropsError,
+        data({ id: "m", max_model_len: 4096 } as Record<string, unknown>),
+      ),
     ).toBe(Mode.LEGACY);
   });
 
   it("should fall back to SINGLE otherwise", () => {
-    expect(detectMode(singleProps, data({ id: "m" }))).toBe(Mode.SINGLE);
+    expect(
+      detectMode(
+        singleProps as PropsEndpoint | LlamaSwapPropsError,
+        data({ id: "m" }),
+      ),
+    ).toBe(Mode.SINGLE);
   });
 });

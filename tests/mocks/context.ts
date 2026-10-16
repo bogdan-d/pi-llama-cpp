@@ -1,31 +1,50 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { vi } from "vitest";
 
-/** Create a mock extension context */
+/** Create a mock extension context typed as `ExtensionCommandContext`.
+ * Casts once at the source so test bodies stay clean. */
 export const createMockCtx = (
   selectFn: (prompt: string, options: string[]) => string | null,
-) => ({
-  mode: "tui",
-  cwd: "/tmp/test",
-  ui: {
-    select: vi.fn(selectFn),
-    notify: vi.fn(),
-    custom: vi.fn(),
-    theme: {
-      fg: (_color: string, text: string) => text,
+): ExtensionCommandContext =>
+  ({
+    mode: "tui",
+    cwd: "/tmp/test",
+    ui: {
+      select: vi.fn(selectFn),
+      notify: vi.fn(),
+      custom: vi.fn(),
+      theme: {
+        fg: (_color: string, text: string) => text,
+      },
     },
-  },
-  modelRegistry: {
-    find: vi.fn().mockReturnValue({ id: "test-model-id" }),
-  },
-});
+    modelRegistry: {
+      find: vi.fn().mockReturnValue({ id: "test-model-id" }),
+    },
+  }) as unknown as ExtensionCommandContext;
 
-/** Create a mock Pi instance */
-export const createMockPi = () => ({
-  setModel: vi.fn(),
-  registerProvider: vi.fn(),
-  unregisterProvider: vi.fn(),
-});
+/** Create a mock Pi instance typed as `ExtensionAPI`.
+ * Only `setModel`, `registerProvider`, `unregisterProvider` are used by tests;
+ * the rest are absent but the cast keeps the compiler happy. */
+export const createMockPi = (): ExtensionAPI =>
+  ({
+    setModel: vi.fn(),
+    registerProvider: vi.fn(),
+    unregisterProvider: vi.fn(),
+  }) as unknown as ExtensionAPI;
+
+/** Create a mock `ExtensionCommandContext` with a `mode` override. */
+export const createMockCommandCtx = (
+  selectFn: (prompt: string, options: string[]) => string | null,
+  overrides?: Partial<ExtensionCommandContext>,
+): ExtensionCommandContext =>
+  ({
+    ...createMockCtx(selectFn),
+    ...overrides,
+  }) as unknown as ExtensionCommandContext;
 
 /** Create a mock Pi context for EventManager */
 export const createMockPiContext = (notifyFn: ReturnType<typeof vi.fn>) =>

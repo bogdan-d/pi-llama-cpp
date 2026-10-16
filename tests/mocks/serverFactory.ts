@@ -18,7 +18,7 @@ export const createSeededServerFactory = (
   disconnects?: Record<string, () => void>,
 ): ServerFactory => ({
   create: (resolver, options) => {
-    const server = createMockServer(
+    return createMockServer(
       resolver,
       {
         baseUrl: options.baseUrl,
@@ -27,10 +27,10 @@ export const createSeededServerFactory = (
         overrides: options.overrides,
       },
       models[options.baseUrl],
+      undefined,
+      disconnects?.[options.baseUrl]
+        ? { disconnect: disconnects[options.baseUrl] }
+        : undefined,
     );
-    if (disconnects?.[options.baseUrl]) {
-      (server as any).sse = { disconnect: disconnects[options.baseUrl] };
-    }
-    return server;
   },
 });

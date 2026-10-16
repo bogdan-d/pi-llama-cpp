@@ -1,7 +1,7 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Action } from "../../src/enums/action";
 import { CommandManager } from "../../src/managers/command";
 import { EventManager } from "../../src/managers/events";
@@ -10,10 +10,15 @@ import type { SettingsService } from "../../src/settings/settings";
 import { SETTINGS_ITEMS } from "../../src/settings/defaults";
 import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
+import { OverrideSettingsList } from "../../src/ui/editors/override/overrideList";
 import { ServerDisplay } from "../../src/ui/editors/server/utils";
-import { createMockCtx } from "../mocks/context";
+import {
+  createMockCtx,
+  createMockCommandCtx,
+  createMockPi,
+} from "../mocks/context";
 import { createMockModel } from "../mocks/model";
-import { createMockPi } from "../mocks/context";
+import { createMockTui } from "../mocks/tui";
 import { createMockServer } from "../mocks/server";
 import { mockResolver, mockServerOptions } from "../mocks/server";
 import { createServerFactory } from "../mocks/serverFactory";
@@ -134,14 +139,9 @@ describe("CommandManager", () => {
         unloadEventManager,
       );
 
-      const ctx = {
-        ui: {
-          notify: vi.fn(),
-          theme: { fg: (_: string, text: string) => text },
-        },
-      } as any;
+      const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("unload", ctx, mockPi as any);
+      await commandManager.handleCommand("unload", ctx, mockPi);
 
       expect(model1.unload).toHaveBeenCalled();
       expect(model2.unload).toHaveBeenCalled();
@@ -178,14 +178,9 @@ describe("CommandManager", () => {
         infoEventManager,
       );
 
-      const ctx = {
-        ui: {
-          notify: vi.fn(),
-          theme: { fg: (_: string, text: string) => text },
-        },
-      } as any;
+      const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("info", ctx, mockPi as any);
+      await commandManager.handleCommand("info", ctx, mockPi);
 
       expect(model1.getInfo).toHaveBeenCalled();
       expect(model2.getInfo).toHaveBeenCalled();
@@ -312,7 +307,7 @@ describe("CommandManager", () => {
         .mockResolvedValue(undefined);
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("settings", ctx as any, mockPi as any);
+      await commandManager.handleCommand("settings", ctx, mockPi);
 
       expect(updateSpy).not.toHaveBeenCalled();
       expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -320,9 +315,9 @@ describe("CommandManager", () => {
     });
 
     it("should notify instead of opening the menu outside the TUI", async () => {
-      const ctx = { ...createMockCtx(() => null), mode: "rpc" } as any;
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
 
-      await commandManager.handleCommand("settings", ctx, mockPi as any);
+      await commandManager.handleCommand("settings", ctx, mockPi);
 
       expect(ctx.ui.custom).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -345,13 +340,13 @@ describe("CommandManager", () => {
             (data === "\x1b[A" && name === "tui.select.up") ||
             (data === "\x1b[B" && name === "tui.select.down"),
         ),
-      }) as unknown as KeybindingsManager;
+      }) as Partial<KeybindingsManager> as KeybindingsManager;
 
     const createMockTheme = (): Theme =>
       ({
         fg: (_color: string, text: string) => text,
         bold: (text: string) => text,
-      }) as unknown as Theme;
+      }) as Partial<Theme> as Theme;
 
     it("should re-register providers after the editor closes", async () => {
       const updateSpy = vi
@@ -359,7 +354,7 @@ describe("CommandManager", () => {
         .mockResolvedValue(undefined);
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
       expect(updateSpy).toHaveBeenCalledTimes(1);
@@ -371,9 +366,9 @@ describe("CommandManager", () => {
     });
 
     it("should notify instead of opening the editor outside the TUI", async () => {
-      const ctx = { ...createMockCtx(() => null), mode: "rpc" } as any;
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
 
-      await commandManager.handleCommand("servers", ctx, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       expect(ctx.ui.custom).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -397,7 +392,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       // Invoke the factory captured from ctx.ui.custom
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
@@ -408,7 +403,7 @@ describe("CommandManager", () => {
       ) => ServerSettingsList;
       const done = vi.fn();
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         {
           matches: vi.fn(
@@ -416,7 +411,7 @@ describe("CommandManager", () => {
               (data === ENTER && name === "tui.select.confirm") ||
               (data === ESC && name === "tui.select.cancel"),
           ),
-        } as unknown as KeybindingsManager,
+        } as Partial<KeybindingsManager> as KeybindingsManager,
         done,
       );
 
@@ -462,7 +457,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
         tui: TUI,
@@ -471,7 +466,7 @@ describe("CommandManager", () => {
         done: (result: undefined) => void,
       ) => ServerSettingsList;
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         createMockKeybindings(),
         vi.fn(),
@@ -507,7 +502,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
         tui: TUI,
@@ -516,7 +511,7 @@ describe("CommandManager", () => {
         done: (result: undefined) => void,
       ) => ServerSettingsList;
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         createMockKeybindings(),
         vi.fn(),
@@ -544,6 +539,91 @@ describe("CommandManager", () => {
       expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
         servers: [{ url: "http://seed:1" }],
       });
+    });
+  });
+
+  describe("/models overrides editor", () => {
+    const ESC = "\x1b";
+    const ENTER = "\r";
+
+    const createMockKeybindings = (): KeybindingsManager =>
+      ({
+        matches: vi.fn(
+          (data: string, name: string) =>
+            (data === ENTER && name === "tui.select.confirm") ||
+            (data === ESC && name === "tui.select.cancel") ||
+            (data === "\x1b[A" && name === "tui.select.up") ||
+            (data === "\x1b[B" && name === "tui.select.down"),
+        ),
+      }) as Partial<KeybindingsManager> as KeybindingsManager;
+
+    const createMockTheme = (): Theme =>
+      ({
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      }) as Partial<Theme> as Theme;
+
+    it("should re-register providers after the editor closes", async () => {
+      const updateSpy = vi
+        .spyOn(serverManager, "update")
+        .mockResolvedValue(undefined);
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("should notify instead of opening the editor outside the TUI", async () => {
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      expect(ctx.ui.custom).not.toHaveBeenCalled();
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "/models overrides requires an interactive session (TUI)",
+        "warning",
+      );
+    });
+
+    it("should open the overrides list seeded with server overrides", async () => {
+      const editorSettings = makeSettingsStub({
+        getLlamaServers: vi.fn(async () => [
+          {
+            url: "http://seed:1",
+            overrides: { "model-a": { cost: { input: 0.1 } } },
+          },
+        ]),
+      });
+      const overridesEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        overridesEventManager,
+      );
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
+        tui: TUI,
+        theme: Theme,
+        kb: KeybindingsManager,
+        done: (result: undefined) => void,
+      ) => OverrideSettingsList;
+      const done = vi.fn();
+      const editor = factory(
+        createMockTui(),
+        createMockTheme(),
+        createMockKeybindings(),
+        done,
+      );
+
+      expect(editor.render(80).join("\n")).toContain("1 entries");
     });
   });
 
@@ -597,7 +677,7 @@ describe("CommandManager", () => {
       const { commandManager, mockPi } = createCommandManager(models);
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(ctx.ui.notify).not.toHaveBeenCalled();
     });
@@ -612,7 +692,7 @@ describe("CommandManager", () => {
         return Action.INFO;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(ctx.ui.notify).toHaveBeenCalledWith(
         "Model: model-a\nID: model-a",
@@ -630,7 +710,7 @@ describe("CommandManager", () => {
         return Action.UNLOAD;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(model.unload).toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith("Unloaded model-a", "info");
@@ -646,7 +726,7 @@ describe("CommandManager", () => {
         return Action.SWITCH;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(mockPi.setModel).toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith("Model model-a ready", "info");
@@ -664,7 +744,7 @@ describe("CommandManager", () => {
         return null;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(ctx.ui.select).toHaveBeenCalledTimes(3);
       expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -675,7 +755,7 @@ describe("CommandManager", () => {
         createCommandManager([createMockModel("model-a")]);
 
       const ctx = createMockCtx(() => null);
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       // First scan: only model-a is offered
       let choices = vi.mocked(ctx.ui.select).mock.calls[0][1] as string[];
@@ -693,7 +773,7 @@ describe("CommandManager", () => {
         { baseUrl: "http://127.0.0.1:8081" },
       ]);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       choices = vi.mocked(ctx.ui.select).mock.calls[1][1] as string[];
       expect(choices).toHaveLength(2);
@@ -734,7 +814,7 @@ describe("CommandManager", () => {
         return Action.INFO;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       const choices = vi.mocked(ctx.ui.select).mock.calls[0][1] as string[];
       expect(choices).toHaveLength(1);
@@ -776,7 +856,7 @@ describe("CommandManager", () => {
         return Action.INFO;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       const choices = vi.mocked(ctx.ui.select).mock.calls[0][1] as string[];
       expect(choices).toHaveLength(1);
