@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { THINKING_BUDGETS } from "../../src/constants";
+import { defaultBaseUrl } from "../constants";
 import { Status } from "../../src/enums/status";
 import { EventManager } from "../../src/managers/events";
 import { BaseModel } from "../../src/models/baseModel";
@@ -7,8 +8,7 @@ import { ServerManager } from "../../src/managers/server";
 import type { Server } from "../../src/server";
 import { createMockModel } from "../mocks/model";
 import { createMockPi } from "../mocks/context";
-import { createMockServer } from "../mocks/server";
-import { mockResolver, mockServerOptions } from "../mocks/server";
+import { createMockServer, createTestServer } from "../mocks/server";
 import { makeSettingsStub } from "../mocks/settings";
 
 /**
@@ -391,7 +391,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should load the model when autoloadOnMessage is true and model is UNLOADED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer(mockResolver, mockServerOptions, [
+    const server = createTestServer(defaultBaseUrl(), [
       createMockModel("model-a", {
         getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
         load: vi.fn().mockResolvedValue(undefined),
@@ -410,7 +410,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when autoloadOnMessage is false", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(false);
 
-    const server = createMockServer(mockResolver, mockServerOptions, [
+    const server = createTestServer(defaultBaseUrl(), [
       createMockModel("model-a", {
         getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
         load: vi.fn().mockResolvedValue(undefined),
@@ -428,7 +428,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when model is already LOADED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer(mockResolver, mockServerOptions, [
+    const server = createTestServer(defaultBaseUrl(), [
       createMockModel("model-a", {
         getStatus: vi.fn().mockResolvedValue(Status.LOADED),
         load: vi.fn().mockResolvedValue(undefined),
@@ -446,7 +446,7 @@ describe("EventManager.autoLoadIfNeeded", () => {
   it("should not load the model when model is SLEEPING", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
 
-    const server = createMockServer(mockResolver, mockServerOptions, [
+    const server = createTestServer(defaultBaseUrl(), [
       createMockModel("model-a", {
         getStatus: vi.fn().mockResolvedValue(Status.SLEEPING),
         load: vi.fn().mockResolvedValue(undefined),

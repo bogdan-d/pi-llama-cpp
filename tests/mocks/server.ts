@@ -59,3 +59,19 @@ export const createMockServer = (
     initialize: server.initialize,
   });
 };
+
+/**
+ * Convenience: create a seeded server with the default resolver —
+ * the most common test pattern.
+ */
+export const createTestServer = (
+  baseUrl: string,
+  models: BaseModel[],
+  disconnects?: () => void,
+): Server => {
+  const server = createMockServer(mockResolver, { baseUrl }, models);
+  if (disconnects) {
+    (server as any).sse = { disconnect: disconnects };
+  }
+  return server;
+};
