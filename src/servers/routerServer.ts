@@ -82,6 +82,53 @@ export class RouterServer extends Server {
   }
 
   /**
+   * Orchestrate model unloading (HTTP call + SSE or polling wait).
+   *
+   * @param modelId — The model ID to unload.
+   * @throws When the model fails to unload.
+   */
+  override async unloadModel(modelId: string): Promise<void> {
+    await this.postRequest("unload", modelId);
+
+    // SSE or polling fallback
+    const sse = this.sseManager;
+    if (sse) {
+      try {
+        const { status: sseStatus } = await sse.subscribeToStatus(modelId);
+        if (sseStatus !== Status.UNLOADED) {
+          throw new Error(`Model unload failed: ${modelId}`);
+        }
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          err.message.startsWith("Model unload failed")
+        ) {
+          throw err;
+        }
+        try {
+          await this.pollModelStatus(modelId, Status.UNLOADED);
+          const finalStatus = await this.getModelStatus(modelId);
+          if (finalStatus !== Status.UNLOADED) {
+            throw new Error(`Model unload failed: ${modelId}`);
+          }
+        } catch {
+          throw new Error(`Model unload failed: ${modelId}`);
+        }
+      }
+    } else {
+      try {
+        await this.pollModelStatus(modelId, Status.UNLOADED);
+        const finalStatus = await this.getModelStatus(modelId);
+        if (finalStatus !== Status.UNLOADED) {
+          throw new Error(`Model unload failed: ${modelId}`);
+        }
+      } catch {
+        throw new Error(`Model unload failed: ${modelId}`);
+      }
+    }
+  }
+
+  /**
    * Resolves context size from meta when loaded, or from CLI args
    * (--ctx-size, --fit-ctx) when unloaded.
    *

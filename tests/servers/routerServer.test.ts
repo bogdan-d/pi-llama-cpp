@@ -467,4 +467,127 @@ describe("RouterServer", () => {
       expect(server.postRequest).toHaveBeenCalledWith("load", "m");
     });
   });
+
+  // ── RouterServer: unloadModel with SSE ──
+
+  describe("unloadModel", () => {
+    it("should call POST /models/unload then use SSE to wait for unloaded", async () => {
+      const server = createServer();
+      server.sse!.subscribeToStatus = vi.fn().mockResolvedValue({
+        status: "unloaded",
+      });
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      await server.unloadModel("m");
+      expect(server.postRequest).toHaveBeenCalledWith("unload", "m");
+    });
+
+    it("should throw when SSE reports non-unloaded status", async () => {
+      const server = createServer();
+      server.sse!.subscribeToStatus = vi.fn().mockResolvedValue({
+        status: "loaded",
+      });
+      server.postRequest = vi.fn();
+      server.unloadModel = RouterServer.prototype.unloadModel;
+      await expect(server.unloadModel("m")).rejects.toThrow(
+        "Model unload failed: m",
+      );
+    });
+
+    it("should fall back to polling when SSE throws", async () => {
+      const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED)
+        .mockResolvedValue(Status.UNLOADED);
+      server.sse!.subscribeToStatus = vi
+        .fn()
+        .mockRejectedValue(new Error("sse error"));
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      server.unloadModel = RouterServer.prototype.unloadModel;
+      await server.unloadModel("m");
+    });
+
+    it("should throw when SSE throws and polling fails", async () => {
+      const server = createServer();
+      server.getModelStatus = vi.fn().mockResolvedValue(Status.LOADED);
+      server.sse!.subscribeToStatus = vi
+        .fn()
+        .mockRejectedValue(new Error("sse error"));
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      server.resolver.resolvePollingTimeout = vi.fn(async () => 100);
+      server.unloadModel = RouterServer.prototype.unloadModel;
+      await expect(server.unloadModel("m")).rejects.toThrow(
+        "Model unload failed: m",
+      );
+    });
+
+    it("should throw when SSE throws and polling fallback also fails", async () => {
+      const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED)
+        .mockResolvedValueOnce(Status.LOADED);
+      server.sse!.subscribeToStatus = vi
+        .fn()
+        .mockRejectedValue(new Error("sse error"));
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      server.resolver.resolvePollingTimeout = vi.fn(async () => 100);
+      await expect(server.unloadModel("m")).rejects.toThrow(
+        "Model unload failed: m",
+      );
+    });
+
+    it("should use polling when SSE is unavailable", async () => {
+      const server = createServer();
+      server.sse = undefined;
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED)
+        .mockResolvedValue(Status.UNLOADED);
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      await server.unloadModel("m");
+      expect(server.postRequest).toHaveBeenCalledWith("unload", "m");
+    });
+
+    it("should throw when SSE throws and polling exits but final status fails", async () => {
+      const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED) // inside pollModelStatus loop
+        .mockResolvedValueOnce(Status.UNLOADED) // pollModelStatus exits
+        .mockResolvedValue(Status.LOADED); // final check
+      server.sse!.subscribeToStatus = vi
+        .fn()
+        .mockRejectedValue(new Error("sse error"));
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      server.resolver.resolvePollingTimeout = vi.fn(async () => 100);
+      server.unloadModel = RouterServer.prototype.unloadModel;
+      await expect(server.unloadModel("m")).rejects.toThrow(
+        "Model unload failed: m",
+      );
+    });
+
+    it("should throw when polling exits but final status fails (no SSE)", async () => {
+      const server = createServer();
+      server.sse = undefined;
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED) // inside pollModelStatus loop
+        .mockResolvedValueOnce(Status.UNLOADED) // pollModelStatus exits
+        .mockResolvedValue(Status.LOADED); // final check
+      server.postRequest = vi.fn();
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      server.resolver.resolvePollingTimeout = vi.fn(async () => 100);
+      server.unloadModel = RouterServer.prototype.unloadModel;
+      await expect(server.unloadModel("m")).rejects.toThrow(
+        "Model unload failed: m",
+      );
+    });
+  });
 });
