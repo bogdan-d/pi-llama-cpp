@@ -36,12 +36,14 @@ export class ApiClient {
    * @param getApiKey Resolves the API key for authentication at request time
    * @param getPollingInterval Resolves the current polling interval, which
    *   the cache TTL is derived from (half of it) at each GET request
+   * @param fetchFn Optional custom fetch implementation (for testing)
    */
   constructor(
     private readonly baseUrl: string,
     private readonly getApiKey: () => string,
     private readonly getPollingInterval: () => Promise<number> = async () =>
       PollingIntervalSettingsItem.defaultValue,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {}
 
   /**
@@ -198,7 +200,7 @@ export class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
 
-    return fetch(url, {
+    return this.fetchFn(url, {
       signal,
       method,
       headers: {

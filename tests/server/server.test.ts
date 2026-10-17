@@ -1,12 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Mode } from "../../src/enums/mode";
 import { ServerStatus } from "../../src/enums/serverStatus";
+import { ApiClient } from "../../src/api/client";
 import type { PropsEndpoint } from "../../src/interfaces/endpoints/props";
 import type { SettingsService } from "../../src/settings/settings";
 import { Server } from "../../src/server";
 import { createMockServer } from "../mocks/server";
 import { mockResolver, mockServerOptions } from "../mocks/server";
-import { installFetchStub, mockRpc } from "../mocks/rpc";
+import type { CreateMockServerOptions } from "../mocks/server";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
 import { makeResolverStub, makeSettingsStub } from "../mocks/settings";
 
 // Injected into every real Server below; fresh per test so per-case
@@ -14,9 +22,15 @@ import { makeResolverStub, makeSettingsStub } from "../mocks/settings";
 // (ApiClient built there) — the stub's placeholder key is never consumed.
 let settings: SettingsService;
 
+/**
+ * Builds a real `Server` wired to this file's mock RPC through its
+ * `ApiClient` — no global `fetch` stubbing.
+ */
+const createRpcServer = (opts: CreateMockServerOptions = {}): Server =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
+
 beforeEach(() => {
   mockRpc.mockClear();
-  installFetchStub();
   settings = makeSettingsStub();
 });
 
@@ -68,7 +82,7 @@ describe("Server fetchModels", () => {
       object: "list",
     });
 
-    const server = createMockServer();
+    const server = createRpcServer();
     const result = await server.fetchModels();
 
     expect(result).toEqual({
@@ -102,7 +116,7 @@ describe("Server fetchModelProps", () => {
       build_info: "",
     });
 
-    const server = createMockServer();
+    const server = createRpcServer();
     const result = await server.fetchModelProps("test-model");
 
     expect(result.is_sleeping).toBe(false);
@@ -135,7 +149,7 @@ describe("Server fetchServerProps", () => {
       is_sleeping: false,
     });
 
-    const server = createMockServer();
+    const server = createRpcServer();
     const result = await server.fetchServerProps();
 
     // Test mocks return a PropsEndpoint shape
@@ -154,7 +168,7 @@ describe("Server fetchServerProps", () => {
       },
     });
 
-    const server = createMockServer();
+    const server = createRpcServer();
     const result = await server.fetchServerProps();
 
     expect((result as { src: string }).src).toBe("llama-swap");
@@ -180,16 +194,15 @@ describe("Server mode detection (via initialize)", () => {
         },
       });
 
-    const server = createMockServer(
-      mockResolver,
-      mockServerOptions,
-      undefined,
-      {
+    const server = createRpcServer({
+      resolver: mockResolver,
+      options: mockServerOptions,
+      overrides: {
         initialize: async () => {
           await Server.prototype.initialize.call(server);
         },
       },
-    );
+    });
     await server.initialize();
 
     expect(server.models[0].mode).toBe(Mode.LLAMASWAP);
@@ -200,7 +213,7 @@ describe("Server postRequest", () => {
   it("should call /models/load with model in body", async () => {
     mockRpc.mockResolvedValueOnce({});
 
-    const server = createMockServer();
+    const server = createRpcServer();
     await server.postRequest("load", "test-model");
 
     expect(mockRpc).toHaveBeenCalledWith("/models/load", {
@@ -211,7 +224,7 @@ describe("Server postRequest", () => {
   it("should call /models/unload with model in body", async () => {
     mockRpc.mockResolvedValueOnce({});
 
-    const server = createMockServer();
+    const server = createRpcServer();
     await server.postRequest("unload", "test-model");
 
     expect(mockRpc).toHaveBeenCalledWith("/models/unload", {
@@ -221,63 +234,69 @@ describe("Server postRequest", () => {
 });
 
 describe("Server isReady", () => {
-  // `isReady` probes through the server's ApiClient — stub raw `fetch` per test.
-  const stubFetch = (impl: (url: string) => Promise<unknown>) => {
-    vi.stubGlobal("fetch", vi.fn(impl));
-  };
+  // Helper: build an ApiClient with a mock fetchFn for isReady tests.
+  const makeTestClient = (fetchMock: ReturnType<typeof vi.fn>): ApiClient =>
+    new ApiClient(
+      "http://127.0.0.1:9931",
+      () => "sk-placeholder",
+      undefined,
+      fetchMock as typeof globalThis.fetch,
+    );
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  const mkServer = (fetchMock: ReturnType<typeof vi.fn>) =>
+    createRpcServer({ apiClient: makeTestClient(fetchMock) });
 
   it("should return READY when health and auth succeed", async () => {
-    stubFetch(async () => ({ ok: true, status: 200, json: async () => ({}) }));
-
-    const server = createMockServer();
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    }));
+    const server = mkServer(fetchMock);
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.READY);
   });
 
   it("should return UNAUTHORIZED when auth fails", async () => {
-    stubFetch(async (url: string) =>
+    const fetchMock = vi.fn(async (url: string) =>
       url.includes("/health")
         ? { ok: true, status: 200, json: async () => ({}) }
         : { ok: false, status: 401, json: async () => ({}) },
     );
-
-    const server = createMockServer();
+    const server = mkServer(fetchMock);
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.UNAUTHORIZED);
   });
 
   it("should return UNREACHABLE when health check fails", async () => {
-    stubFetch(async () => {
+    const fetchMock = vi.fn(async () => {
       throw new Error("connection refused");
     });
-
-    const server = createMockServer();
+    const server = mkServer(fetchMock);
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.UNREACHABLE);
   });
 
   it("should return UNREACHABLE when health status is not ok", async () => {
-    stubFetch(async () => ({ ok: false, status: 503, json: async () => ({}) }));
-
-    const server = createMockServer();
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    }));
+    const server = mkServer(fetchMock);
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.UNREACHABLE);
   });
 
   it("should return TIMEOUT when the health check aborts", async () => {
-    stubFetch(async () => {
+    const fetchMock = vi.fn(async () => {
       throw new DOMException("The operation timed out.", "TimeoutError");
     });
-
-    const server = createMockServer();
+    const server = mkServer(fetchMock);
     const status = await server.isReady(1000);
 
     expect(status).toBe(ServerStatus.TIMEOUT);
@@ -286,20 +305,21 @@ describe("Server isReady", () => {
   it("should perform exactly one /v1/models call across isReady + initialize", async () => {
     // Regression: the auth probe warms the ApiClient cache, so the models
     // fetch during `initialize()` must be served from cache, not the network.
-    installFetchStub();
     mockRpc.mockImplementation(async (endpoint: string) => {
       if (endpoint === "/v1/models") return { data: [{ id: "m1" }] };
       return {}; // /health → 200, /props → SINGLE mode
     });
 
-    const server = new Server(makeResolverStub(), {
-      baseUrl: "http://127.0.0.1:9931",
-    });
+    const server = new Server(
+      makeResolverStub(),
+      { baseUrl: "http://127.0.0.1:9931" },
+      undefined,
+      mockFetch,
+    );
     await server.isReady(1000);
     await server.initialize();
 
-    const fetchMock = vi.mocked(globalThis.fetch);
-    const modelsCalls = fetchMock.mock.calls.filter(([url]) =>
+    const modelsCalls = mockFetch.mock.calls.filter(([url]) =>
       String(url).endsWith("/v1/models"),
     ).length;
     expect(modelsCalls).toBe(1);

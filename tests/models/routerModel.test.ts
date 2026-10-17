@@ -4,7 +4,21 @@ import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { RouterModel } from "../../src/models/routerModel";
 import { createMockServer } from "../mocks/server";
-import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
+
+/**
+ * Servers wired to this file's mock RPC through their `ApiClient` —
+ * no global `fetch` stubbing.
+ */
+const createRpcServer = (opts = {}) =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
+
 import { makeResolverStub } from "../mocks/settings";
 
 // Helper to create a mock DataProperty
@@ -21,7 +35,6 @@ const createModel = (overrides: Partial<DataProperty> = {}): DataProperty => ({
 
 beforeEach(() => {
   mockRpc.mockClear();
-  installFetchStub();
 });
 
 describe("RouterModel context size (via toProviderConfig)", () => {
@@ -50,7 +63,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -69,7 +82,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -88,7 +101,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -107,7 +120,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -126,7 +139,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -145,7 +158,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
           preset: "default",
         },
       }),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -173,7 +186,7 @@ describe("RouterModel context size (via toProviderConfig)", () => {
 
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
 
@@ -189,7 +202,7 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
 
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
     const { input } = await model.toProviderConfig();
@@ -208,7 +221,7 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
 
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
     const { input } = await model.toProviderConfig();
@@ -240,7 +253,7 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
 
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
     const { input } = await model.toProviderConfig();
@@ -268,7 +281,7 @@ describe("RouterModel capabilities detection (via toProviderConfig)", () => {
 
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
     const { input } = await model.toProviderConfig();
@@ -281,7 +294,7 @@ describe("RouterModel mode", () => {
   it("should always return ROUTER mode", () => {
     const model = new RouterModel(
       createModel(),
-      createMockServer(),
+      createRpcServer({}),
       makeResolverStub(),
     );
     expect(model.mode).toBe(Mode.ROUTER);
@@ -290,7 +303,7 @@ describe("RouterModel mode", () => {
 
 describe("RouterModel unload", () => {
   it("should call postRequest then poll until UNLOADED", async () => {
-    const mockServer = createMockServer();
+    const mockServer = createRpcServer({});
     const model = new RouterModel(
       createModel(),
       mockServer,
@@ -313,7 +326,7 @@ describe("RouterModel unload", () => {
   });
 
   it("should throw on timeout before reaching UNLOADED", async () => {
-    const mockServer = createMockServer();
+    const mockServer = createRpcServer({});
     const model = new RouterModel(
       createModel(),
       mockServer,
@@ -332,7 +345,7 @@ describe("RouterModel unload", () => {
   });
 
   it("should resolve when status reaches UNLOADED", async () => {
-    const mockServer = createMockServer();
+    const mockServer = createRpcServer({});
     const model = new RouterModel(
       createModel(),
       mockServer,

@@ -29,10 +29,12 @@ export class SSEClient {
   /**
    * @param sseEndpoint - The full SSE endpoint URL (e.g., "http://127.0.0.1:9931/models/sse")
    * @param apiKey - Optional API key for authenticated servers
+   * @param fetchFn - Optional custom fetch implementation (for testing)
    */
   constructor(
     private readonly sseEndpoint: string,
     private readonly apiKey?: string,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {}
 
   /**
@@ -71,6 +73,7 @@ export class SSEClient {
           this.sseEndpoint,
           this.apiKey,
           abortController.signal,
+          this.fetchFn,
         );
       } catch {
         if (this.disposed || abortController.signal.aborted) return false;

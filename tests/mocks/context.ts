@@ -27,13 +27,18 @@ export const createMockCtx = (
   }) as unknown as ExtensionCommandContext;
 
 /** Create a mock Pi instance typed as `ExtensionAPI`.
- * Only `setModel`, `registerProvider`, `unregisterProvider` are used by tests;
- * the rest are absent but the cast keeps the compiler happy. */
-export const createMockPi = (): ExtensionAPI =>
+ * Stubs the methods tests commonly call; pass extras via `overrides`.
+ * Absent methods throw `undefined is not a function` at call site so
+ * missing stubs fail fast instead of silently crashing mid-test. */
+export const createMockPi = (
+  overrides: Partial<ExtensionAPI> = {},
+): ExtensionAPI =>
   ({
     setModel: vi.fn(),
     registerProvider: vi.fn(),
     unregisterProvider: vi.fn(),
+    registerCommand: vi.fn(),
+    ...overrides,
   }) as unknown as ExtensionAPI;
 
 /** Create a mock `ExtensionCommandContext` with a `mode` override. */

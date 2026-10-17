@@ -6,7 +6,7 @@ import { createMockServer } from "./server";
  * Creates a default `ServerFactory` that produces unseeded mock servers.
  */
 export const createServerFactory = (): ServerFactory => ({
-  create: (resolver) => createMockServer(resolver),
+  create: (resolver) => createMockServer({ resolver }),
 });
 
 /**
@@ -18,19 +18,19 @@ export const createSeededServerFactory = (
   disconnects?: Record<string, () => void>,
 ): ServerFactory => ({
   create: (resolver, options) => {
-    return createMockServer(
+    const serverOpts: Parameters<typeof createMockServer>[0] = {
       resolver,
-      {
+      options: {
         baseUrl: options.baseUrl,
         customId: options.customId,
         customName: options.customName,
         overrides: options.overrides,
       },
-      models[options.baseUrl],
-      undefined,
-      disconnects?.[options.baseUrl]
-        ? { disconnect: disconnects[options.baseUrl] }
-        : undefined,
-    );
+      models: models[options.baseUrl],
+    };
+    if (disconnects?.[options.baseUrl]) {
+      serverOpts.sse = { disconnect: disconnects[options.baseUrl] };
+    }
+    return createMockServer(serverOpts);
   },
 });

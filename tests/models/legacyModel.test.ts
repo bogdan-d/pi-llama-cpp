@@ -4,12 +4,25 @@ import { Mode } from "../../src/enums/mode";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
 import { LegacyModel } from "../../src/models/legacyModel";
 import { createMockServer } from "../mocks/server";
-import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
+
+/**
+ * Servers wired to this file's mock RPC through their `ApiClient` —
+ * no global `fetch` stubbing.
+ */
+const createRpcServer = (opts = {}) =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
+
 import { makeResolverStub } from "../mocks/settings";
 
 beforeEach(() => {
   mockRpc.mockReset();
-  installFetchStub();
 });
 
 const createModel = (extra: Partial<DataProperty> = {}): LegacyModel =>
@@ -22,7 +35,7 @@ const createModel = (extra: Partial<DataProperty> = {}): LegacyModel =>
       created: Date.now(),
       ...extra,
     },
-    createMockServer(),
+    createRpcServer({}),
     makeResolverStub(),
   );
 

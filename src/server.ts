@@ -34,21 +34,26 @@ const isTimeout = (err: unknown): boolean =>
 
 export class Server implements IServer {
   public readonly models: BaseModel[] = [];
-  private apiClient: ApiClient;
+  private readonly apiClient: ApiClient;
   private sse?: SSEManager;
 
   constructor(
     private readonly resolver: ServerSettingsResolver,
     private readonly options: ServerOptions,
+    apiClient?: ApiClient,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {
     // Eager client: `isReady` may run before `initialize()` (health probing
     // in ServerManager), so no lazy fallback is needed. The key is resolved
     // per request, so the client never needs rebuilding when it changes.
-    this.apiClient = new ApiClient(
-      options.baseUrl,
-      () => this.apiKey,
-      () => this.resolver.resolvePollingInterval(),
-    );
+    this.apiClient =
+      apiClient ??
+      new ApiClient(
+        options.baseUrl,
+        () => this.apiKey,
+        () => this.resolver.resolvePollingInterval(),
+        this.fetchFn,
+      );
   }
 
   /** Base URL of this server endpoint. */
@@ -75,6 +80,22 @@ export class Server implements IServer {
    */
   get sseManager(): SSEManager | undefined {
     return this.sse;
+  }
+
+  /**
+   * Overrides the SSE disconnect handler. Used by tests to verify
+   * disconnect behavior without a real SSE connection.
+   */
+  setSseDisconnect(disconnect: () => void): void {
+    this.sse!.disconnect = disconnect;
+  }
+
+  /**
+   * Sets the SSE manager. Used by tests to inject a pre-configured
+   * instance so `sseManager` is available before `initialize()`.
+   */
+  setSseManager(sseManager: SSEManager): void {
+    this.sse = sseManager;
   }
 
   /**
@@ -170,8 +191,12 @@ export class Server implements IServer {
     url: string,
     timeout: number,
     apiKey?: string,
+    fetchFn?: typeof globalThis.fetch,
   ): Promise<ServerStatus> {
-    return Server.probe(timeout, new ApiClient(url, () => apiKey ?? ""));
+    return Server.probe(
+      timeout,
+      new ApiClient(url, () => apiKey ?? "", undefined, fetchFn),
+    );
   }
 
   /**

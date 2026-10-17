@@ -7,7 +7,6 @@ import { createMockModel } from "../mocks/model";
 import { createMockServer } from "../mocks/server";
 import { createSeededServerFactory } from "../mocks/serverFactory";
 import { makeSettingsStub } from "../mocks/settings";
-import { mockRpc } from "../mocks/rpc";
 
 // Injected settings stub — the single instance passed to ServerManager and
 // to every `Server` it constructs (the manager injects it as the settings
@@ -28,21 +27,8 @@ const configOf = (
   extra: Partial<ServerOptions> = {},
 ): ServerOptions => ({ baseUrl, ...extra });
 
-/**
- * Creates a mock `ServerFactory` that seeds models into each constructed
- * server, keyed by baseUrl.
- */
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRpc.mockImplementation((endpoint: string, fallback?: unknown) => {
-    const defaults: Record<string, unknown> = {
-      "/health": { status: "ok" },
-      "/props?autoload=false": { role: "router" },
-      "/v1/models": { data: [], object: "list" },
-    };
-    return Promise.resolve(defaults[endpoint] ?? fallback ?? {});
-  });
 });
 
 afterEach(() => {
@@ -307,11 +293,11 @@ describe("ServerManager", () => {
   describe("timeout → skip → retry via /models", () => {
     it("should skip a TIMEOUT server on init, then register it on /models", async () => {
       // Create real servers we can spy on
-      const server1 = createMockServer(undefined, {
-        baseUrl: "http://127.0.0.1:9931",
+      const server1 = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
       });
-      const server2 = createMockServer(undefined, {
-        baseUrl: "http://127.0.0.1:8081",
+      const server2 = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:8081" },
       });
 
       // Server1 will timeout during health check
@@ -355,11 +341,11 @@ describe("ServerManager", () => {
     });
 
     it("should skip an UNREACHABLE server on init, then register it on /models", async () => {
-      const server1 = createMockServer(undefined, {
-        baseUrl: "http://127.0.0.1:9931",
+      const server1 = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
       });
-      const server2 = createMockServer(undefined, {
-        baseUrl: "http://127.0.0.1:8081",
+      const server2 = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:8081" },
       });
 
       // Server1 returns UNREACHABLE (non-200, non-timeout)
@@ -405,8 +391,8 @@ describe("ServerManager", () => {
 
   describe("registerProvider error handling", () => {
     it("should add the URL to failedUrls when initialize throws a non-auth error", async () => {
-      const server = createMockServer(undefined, {
-        baseUrl: "http://127.0.0.1:9931",
+      const server = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
       });
       // Simulate a non-auth error during initialization
       vi.spyOn(server, "initialize").mockRejectedValue(

@@ -1,5 +1,5 @@
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LlamaServer } from "../../src/interfaces/settings";
 import { ConfirmDialog } from "../../src/ui/dialog/confirm";
 import { InputDialog } from "../../src/ui/dialog/input";
@@ -9,9 +9,20 @@ import { createMockKeybindings } from "../mocks/keybindings";
 import { createMockTui } from "../mocks/tui";
 import { createMockTheme } from "../mocks/theme";
 
+/**
+ * Lets fire-and-forget async callbacks (persist, done) settle under fake
+ * timers — deterministic, unlike a real `setTimeout(0)` sleep.
+ */
+const flush = () => vi.advanceTimersByTimeAsync(0);
+
 beforeEach(() => {
   initTheme();
+  vi.useFakeTimers();
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 const ESC = "\x1b";
@@ -141,7 +152,7 @@ describe("ServerSettingsList add wizard", () => {
     editor.handleInput(ENTER); // URL → ID
     editor.handleInput(ENTER); // skip ID → name
     editor.handleInput(ENTER); // skip name → persist
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(persist).toHaveBeenCalledWith([{ url: "http://x:1" }]);
   });
@@ -155,7 +166,7 @@ describe("ServerSettingsList add wizard", () => {
     for (const ch of "my-id") editor.handleInput(ch);
     editor.handleInput(ENTER); // ID → name
     editor.handleInput(ENTER); // skip name → persist
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(persist).toHaveBeenCalledWith([{ url: "http://x:1", id: "my-id" }]);
   });
@@ -170,7 +181,7 @@ describe("ServerSettingsList add wizard", () => {
     expect(editor.render(80).join("\n")).toContain('Invalid value "not-a-url"');
 
     editor.handleInput(ESC);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
     expect(persist).not.toHaveBeenCalled();
     // Back at the (empty) list view
     expect(editor.render(80).join("\n")).toContain("(a) add server");
@@ -178,8 +189,6 @@ describe("ServerSettingsList add wizard", () => {
 });
 
 describe("OverrideEntryListEditor cost re-prefill", () => {
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
   it("re-entering a cost field prefills the just-saved value", async () => {
     const persist = vi.fn().mockResolvedValue(undefined);
     const list = new OverrideSettingsList({
@@ -219,8 +228,6 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
 });
 
 describe("OverrideSettingsList escape navigation", () => {
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
   const build = () => {
     const done = vi.fn();
     const list = new OverrideSettingsList({

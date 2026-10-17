@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { defaultBaseUrl } from "../constants";
+import { ApiClient } from "../../src/api/client";
 import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
 import { ServerTimeoutSettingsItem } from "../../src/settings/items/serverTimeout";
 import type { ServerSettingsResolver } from "../../src/interfaces/server";
@@ -27,42 +28,72 @@ export const mockResolver: ServerSettingsResolver = defaultResolver;
 export const mockServerOptions = {} as Partial<ServerOptions>;
 
 /**
- * Builds a real `Server` wired with fake collaborators,
- * replacing the old hand-rolled `Partial<Server>` mock whose `isReady` /
- * `initialize` re-implementations drifted from the real ones.
- *
- * Mirrors the real `Server` constructor `(resolver, options)` and adds:
- * - `models` — seeded after construction (like a real scan would do)
- * - `overrides` — post-construction property overrides (e.g. custom `initialize`)
+ * Default `fetchFn` for mock servers: always throws. Prevents tests from
+ * ever touching a real llama-server (e.g. one listening on localhost)
+ * when no `fetchFn` was injected — pass `fetchFn: createRpcFetch(mockRpc)`
+ * to wire a server's HTTP to the file's mock RPC.
+ */
+const guardFetch = (): typeof globalThis.fetch =>
+  vi.fn(async () => {
+    throw new Error(
+      "Mock server performed an HTTP request without an injected fetchFn — pass fetchFn: createRpcFetch(mockRpc) to createMockServer.",
+    );
+  });
+
+/**
+ * Options for {@link createMockServer}.
+ */
+export interface CreateMockServerOptions {
+  resolver?: ServerSettingsResolver;
+  options?: Partial<ServerOptions>;
+  models?: BaseModel[];
+  overrides?: Partial<Server>;
+  sse?: { disconnect: () => void };
+  apiClient?: ApiClient;
+  /** Injectable fetch — routed into the Server's ApiClient and SSEManager. */
+  fetchFn?: typeof globalThis.fetch;
+}
+
+/**
+ * Builds a real `Server` wired with fake collaborators.
  *
  * If `resolver` is omitted a no-op stub is used — tests that need custom
  * apiKey / timeouts should pass their own via `makeResolverStub`.
  */
 export const createMockServer = (
-  resolver?: ServerSettingsResolver,
-  options?: Partial<ServerOptions>,
-  models?: BaseModel[],
-  overrides?: Partial<Server>,
-  sse?: { disconnect: () => void },
+  opts: CreateMockServerOptions = {},
 ): Server => {
+  const { resolver, options, models, overrides, sse, apiClient, fetchFn } =
+    opts;
   const effectiveResolver = resolver ?? defaultResolver;
 
-  const server = new Server(effectiveResolver, {
-    baseUrl: options?.baseUrl ?? defaultBaseUrl(),
-    customId: options?.customId,
-    customName: options?.customName,
-    overrides: options?.overrides,
-  });
+  const server = new Server(
+    effectiveResolver,
+    {
+      baseUrl: options?.baseUrl ?? defaultBaseUrl(),
+      customId: options?.customId,
+      customName: options?.customName,
+      overrides: options?.overrides,
+    },
+    apiClient,
+    fetchFn ?? guardFetch(),
+  );
   if (models) server.models.push(...models);
   // Create an SSEManager so `server.sseManager` is available for tests
   // that call `probeSSE()` etc. — initialize() would do this in real code.
-  server["sse"] = new SSEManager(server, effectiveResolver);
+  server.setSseManager(
+    new SSEManager(
+      server,
+      effectiveResolver,
+      undefined,
+      fetchFn ?? guardFetch(),
+    ),
+  );
   // Stub initialize to a no-op so seeded models aren't overwritten by
   // network fetches — tests that need the real flow pass an override.
   server.initialize = overrides?.initialize ?? (async () => {});
   if (sse) {
-    const sseManager = server["sse"] as SSEManager;
-    sseManager.disconnect = sse.disconnect;
+    server.setSseDisconnect(sse.disconnect);
   }
   return Object.assign(server, overrides, {
     initialize: server.initialize,
@@ -78,6 +109,9 @@ export const createTestServer = (
   models: BaseModel[],
   disconnects?: () => void,
 ): Server =>
-  createMockServer(mockResolver, { baseUrl }, models, undefined, {
-    disconnect: disconnects!,
+  createMockServer({
+    resolver: mockResolver,
+    options: { baseUrl },
+    models,
+    sse: disconnects ? { disconnect: disconnects } : undefined,
   });

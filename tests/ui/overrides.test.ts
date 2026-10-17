@@ -10,12 +10,25 @@ import {
 } from "../../src/ui/editors/override/fields";
 import { createMockServer } from "../mocks/server";
 import { mockResolver } from "../mocks/server";
-import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
+
+/**
+ * Servers wired to this file's mock RPC through their `ApiClient` —
+ * no global `fetch` stubbing.
+ */
+const createRpcServer = (opts = {}) =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
+
 import { makeResolverStub } from "../mocks/settings";
 
 beforeEach(() => {
   mockRpc.mockReset();
-  installFetchStub();
 });
 
 const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
@@ -27,7 +40,7 @@ const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
       owned_by: "test",
       created: Date.now(),
     },
-    createMockServer(mockResolver, { overrides }),
+    createRpcServer({ resolver: mockResolver, options: { overrides } }),
     makeResolverStub(),
   );
 
@@ -46,7 +59,7 @@ const mockDetection = (nCtx: number | undefined) =>
 
 describe("Server.findOverrideForModel", () => {
   const makeServer = (overrides: Record<string, ModelOverride>): Server =>
-    createMockServer(mockResolver, { overrides });
+    createRpcServer({ resolver: mockResolver, options: { overrides } });
 
   it("should match a model by id prefix", () => {
     const server = makeServer({ lla: { reasoning: false } });

@@ -23,7 +23,10 @@ import { createMockServer } from "../mocks/server";
 import { mockResolver, mockServerOptions } from "../mocks/server";
 import { createServerFactory } from "../mocks/serverFactory";
 import { makeSettingsStub } from "../mocks/settings";
-import { mockRpc } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
 
 beforeEach(() => {
   initTheme();
@@ -44,23 +47,6 @@ const createMockEventManager = (
   serverManager: ServerManager,
   settingsStub: SettingsService,
 ) => new EventManager(serverManager, settingsStub);
-
-/**
- * Waits for a ServerSettingsList to finish its async initialization
- * (health checks + SettingsList construction).
- */
-const waitForEditor = (editor: ServerSettingsList): Promise<void> =>
-  new Promise((resolve) => {
-    const check = () => {
-      // @ts-expect-error settingsList is private
-      if (editor.settingsList) {
-        resolve();
-      } else {
-        setTimeout(check, 10);
-      }
-    };
-    check();
-  });
 
 describe("CommandManager", () => {
   let serverManager: ServerManager;
@@ -115,19 +101,20 @@ describe("CommandManager", () => {
     it("should unload all models when args is 'unload'", async () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
-      const server = createMockServer(
-        undefined,
-        {
-          baseUrl: "http://127.0.0.1:9931",
-        },
-        [model1, model2],
-      );
+      const server = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
+        models: [model1, model2],
+      });
       const unloadSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
       serverManager = new ServerManager(unloadSettings, {
         create: () =>
-          createMockServer(mockResolver, mockServerOptions, [...server.models]),
+          createMockServer({
+            resolver: mockResolver,
+            options: mockServerOptions,
+            models: [...server.models],
+          }),
       });
       const unloadEventManager = createMockEventManager(
         serverManager,
@@ -154,19 +141,20 @@ describe("CommandManager", () => {
     it("should show model info when args is 'info'", async () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
-      const server = createMockServer(
-        undefined,
-        {
-          baseUrl: "http://127.0.0.1:9931",
-        },
-        [model1, model2],
-      );
+      const server = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
+        models: [model1, model2],
+      });
       const infoSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
       serverManager = new ServerManager(infoSettings, {
         create: () =>
-          createMockServer(mockResolver, mockServerOptions, [...server.models]),
+          createMockServer({
+            resolver: mockResolver,
+            options: mockServerOptions,
+            models: [...server.models],
+          }),
       });
       const infoEventManager = createMockEventManager(
         serverManager,
@@ -417,7 +405,7 @@ describe("CommandManager", () => {
 
       expect(editor).toBeInstanceOf(ServerSettingsList);
       // Wait for async health checks to complete
-      await waitForEditor(editor);
+      await editor.ready;
       // Seeded with the merged snapshot
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
 
@@ -431,8 +419,9 @@ describe("CommandManager", () => {
       editor.handleInput(ENTER); // skip optional ID
       expect(editor.render(80).join("\n")).toContain("Add server · 3/3");
       editor.handleInput(ENTER); // skip optional name → persist
-      // Wait for async persist and rebuild
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Wait for async persist and rebuild (fake timers flush deterministically)
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(0);
       expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
         servers: [{ url: "http://seed:1" }, { url: "http://new:2" }],
       });
@@ -440,6 +429,7 @@ describe("CommandManager", () => {
       // Esc closes the editor
       editor.handleInput(ESC);
       expect(done).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
     it("should persist nothing when the add wizard is cancelled", async () => {
@@ -477,11 +467,13 @@ describe("CommandManager", () => {
       for (const ch of "http://new:2") editor.handleInput(ch);
       editor.handleInput(ENTER);
       editor.handleInput(ESC);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
       // Back to the list view
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
+      vi.useRealTimers();
     });
 
     it("should delete the selected server after confirming", async () => {
@@ -518,7 +510,7 @@ describe("CommandManager", () => {
       );
 
       // Wait for async health checks to complete
-      await waitForEditor(editor);
+      await editor.ready;
 
       // Move to the second row and open the confirm dialog
       editor.handleInput("\x1b[B");
@@ -647,13 +639,10 @@ describe("CommandManager", () => {
       const seededModels = [...models];
       const serverManager = new ServerManager(settingsStub, {
         create: (_resolver, options) =>
-          createMockServer(
-            undefined,
-            {
-              baseUrl: options.baseUrl,
-            },
-            seededModels.filter((m) => m.serverUrl === options.baseUrl),
-          ),
+          createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: seededModels.filter((m) => m.serverUrl === options.baseUrl),
+          }),
       });
       const factoryEventManager = createMockEventManager(
         serverManager,
@@ -791,13 +780,10 @@ describe("CommandManager", () => {
       });
       const serverManager = new ServerManager(settingsStub, {
         create: (_resolver, options) =>
-          createMockServer(
-            undefined,
-            {
-              baseUrl: options.baseUrl,
-            },
-            models.filter((m) => m.serverUrl === options.baseUrl),
-          ),
+          createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: models.filter((m) => m.serverUrl === options.baseUrl),
+          }),
       });
       const urlEventManager = createMockEventManager(
         serverManager,
@@ -833,13 +819,10 @@ describe("CommandManager", () => {
       });
       const serverManager = new ServerManager(settingsStub, {
         create: (_resolver, options) =>
-          createMockServer(
-            undefined,
-            {
-              baseUrl: options.baseUrl,
-            },
-            models.filter((m) => m.serverUrl === options.baseUrl),
-          ),
+          createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: models.filter((m) => m.serverUrl === options.baseUrl),
+          }),
       });
       const showUrlEventManager = createMockEventManager(
         serverManager,

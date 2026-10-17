@@ -1,21 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DataProperty } from "../../src/interfaces/endpoints/models";
+import type { ModelOverride } from "../../src/interfaces/settings";
 import { Mode } from "../../src/enums/mode";
 import { Status } from "../../src/enums/status";
 import { LlamaSwapModel } from "../../src/models/llamaSwapModel";
 import { createMockServer } from "../mocks/server";
 import { mockResolver } from "../mocks/server";
-import { installFetchStub, mockRpc } from "../mocks/rpc";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
+
+/**
+ * Servers wired to this file's mock RPC through their `ApiClient` —
+ * no global `fetch` stubbing.
+ */
+const createRpcServer = (opts = {}) =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
+
 import { makeResolverStub } from "../mocks/settings";
 
 beforeEach(() => {
   mockRpc.mockReset();
-  installFetchStub();
 });
 
 const createModel = (
   extra: Partial<Record<string, unknown>> = {},
-  serverOptions: Partial<Parameters<typeof createMockServer>[1]> = {},
+  serverOptions: Partial<{
+    baseUrl: string;
+    overrides?: Record<string, ModelOverride>;
+  }> = {
+    baseUrl: "http://127.0.0.1:9931",
+  },
 ): LlamaSwapModel =>
   new LlamaSwapModel(
     {
@@ -27,9 +46,12 @@ const createModel = (
       created: Date.now(),
       ...extra,
     } as DataProperty,
-    createMockServer(mockResolver, {
-      baseUrl: "http://127.0.0.1:9931",
-      ...serverOptions,
+    createRpcServer({
+      resolver: mockResolver,
+      options: {
+        baseUrl: "http://127.0.0.1:9931",
+        ...serverOptions,
+      },
     }),
     makeResolverStub(),
   );

@@ -28,9 +28,16 @@ import { ServerWizard } from "./wizard";
  * - **Esc** closes the editor.
  */
 export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
+  /**
+   * Resolves once the async initial build (health probes, list
+   * construction) completes. Consumers that render immediately after
+   * construction can await this instead of polling internal state.
+   */
+  readonly ready: Promise<void>;
+
   constructor(options: ServerSettingsListOptions) {
     super(options);
-    void this.buildSettingsList().then((list) => {
+    this.ready = this.buildSettingsList().then((list) => {
       this.settingsList = list;
       this.options.tui.requestRender();
     });

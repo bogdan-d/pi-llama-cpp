@@ -30,6 +30,7 @@ export class SSEManager {
     private readonly server: Server,
     private readonly resolver: ServerSettingsResolver,
     sseClient?: SSEClient,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {
     this.sseClient = sseClient ?? null;
   }
@@ -53,7 +54,7 @@ export class SSEManager {
     if (this.sseSupported !== null) return this.sseSupported;
 
     try {
-      const response = await fetch(this.sseEndpoint, {
+      const response = await this.fetchFn(this.sseEndpoint, {
         method: "GET",
         headers: buildAuthHeaders(this.server.apiKey),
         signal: AbortSignal.timeout(await this.resolver.resolveServerTimeout()),
@@ -87,14 +88,18 @@ export class SSEManager {
     this.modelCallbacks.set(modelId, callbacks);
 
     // Create SSE client if not already created
-    this.sseClient ??= new SSEClient(this.sseEndpoint, this.server.apiKey);
+    this.sseClient ??= new SSEClient(
+      this.sseEndpoint,
+      this.server.apiKey,
+      this.fetchFn,
+    );
 
     // Subscribe a single dispatching callback to the SSE client
     if (!this.sseSubscribers.has(modelId)) {
       const dispatch = (event: SSEEvent) => {
         for (const cb of callbacks) cb(event);
       };
-      const cleanup = this.sseClient!.subscribe(modelId, dispatch);
+      const cleanup = this.sseClient.subscribe(modelId, dispatch);
       this.sseSubscribers.set(modelId, cleanup);
     }
 
