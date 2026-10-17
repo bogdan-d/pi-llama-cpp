@@ -1,17 +1,17 @@
 # pi-llama-cpp
 
-A [Pi Coding Agent](https://pi.dev/) extension that integrates with running [llama.cpp servers](https://github.com/ggml-org/llama.cpp) to provide live model browsing, loading, and switching directly from Pi.
+A [Pi Coding Agent](https://pi.dev/) extension that connects to multiple [llama.cpp servers](https://github.com/ggml-org/llama.cpp) — router, single, legacy, or llama-swap — and manages their models directly from Pi.
 
 ## Features
 
-- **Auto-detect models** — discovers all models available on your running llama.cpp server
+- **Auto-detect models** — discovers all models across all connected servers
+- **Multiple server support** — connect to multiple llama.cpp servers simultaneously via `llamaSettings.servers` or semicolon-separated URLs
 - **Live status indicators** — see which models are loaded, loading, failed, sleeping, or unloaded with color-coded icons
 - **Load / unload / switch** — manage models directly from the Pi command palette
-- **Multi-model router support** — works with both single-model and multi-model llama.cpp server configurations
+- **Server mode support** — works with router, single, legacy, and llama-swap server configurations
 - **Image capabilities detection** — detects multimodal models automatically
-- **Flexible URL resolution** — configures the server via `llamaSettings` (project/global), environment variable, or legacy `llamaServerUrl`
-- **Auth support** — allows to login into a llama.cpp server that was secured with an API key
-- **Multiple server support** — connect to multiple llama.cpp servers simultaneously via `llamaSettings.servers` or semicolon-separated URLs
+- **Flexible configuration** — via `llamaSettings`, environment variable, or legacy `llamaServerUrl`
+- **Auth support** — login into servers secured with an API key
 - **Basic llama-swap support** — auto-detects and provides basic integration with [llama-swap](https://github.com/mostlygeek/llama-swap) gateways
 - **Thinking budget support** — configurable token budgets for model reasoning/thinking, mapped to Pi's thinking levels
 - **Real-time progress tracking** — live loading progress via SSE (falls back to polling)
