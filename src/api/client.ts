@@ -111,7 +111,7 @@ export class ApiClient {
    * @throws ApiError with status 401 on authentication rejection (kept for
    *   symmetry with `do_request`, so auth classification needs no special case)
    */
-  async probeStatus(endpoint: string, timeout: number): Promise<number> {
+  async probeStatus(endpoint: string, timeout?: number): Promise<number> {
     const res = await this.fetchResponse(endpoint, "GET", undefined, timeout);
     if (res.status === 401) {
       throw new ApiError("authentication", res.status);

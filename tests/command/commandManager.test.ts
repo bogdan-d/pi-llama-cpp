@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Action } from "../../src/enums/action";
+import { ServerStatus } from "../../src/enums/serverStatus";
 import { CommandManager } from "../../src/managers/command";
 import { EventManager } from "../../src/managers/events";
 import { ServerManager } from "../../src/managers/server";
@@ -109,12 +110,15 @@ describe("CommandManager", () => {
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
       serverManager = new ServerManager(unloadSettings, {
-        create: () =>
-          createMockServer({
+        create: async () => {
+          const mockServer = createMockServer({
             resolver: mockResolver,
             options: mockServerOptions,
             models: [...server.models],
-          }),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
       });
       const unloadEventManager = createMockEventManager(
         serverManager,
@@ -149,12 +153,15 @@ describe("CommandManager", () => {
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
       serverManager = new ServerManager(infoSettings, {
-        create: () =>
-          createMockServer({
+        create: async () => {
+          const mockServer = createMockServer({
             resolver: mockResolver,
             options: mockServerOptions,
             models: [...server.models],
-          }),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
       });
       const infoEventManager = createMockEventManager(
         serverManager,
@@ -638,11 +645,14 @@ describe("CommandManager", () => {
       // them (keyed by baseUrl) via the server factory.
       const seededModels = [...models];
       const serverManager = new ServerManager(settingsStub, {
-        create: (_resolver, options) =>
-          createMockServer({
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
             options: { baseUrl: options.baseUrl },
             models: seededModels.filter((m) => m.serverUrl === options.baseUrl),
-          }),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
       });
       const factoryEventManager = createMockEventManager(
         serverManager,
@@ -779,11 +789,14 @@ describe("CommandManager", () => {
         resolveShowServerUrls: vi.fn(async () => false),
       });
       const serverManager = new ServerManager(settingsStub, {
-        create: (_resolver, options) =>
-          createMockServer({
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
             options: { baseUrl: options.baseUrl },
             models: models.filter((m) => m.serverUrl === options.baseUrl),
-          }),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
       });
       const urlEventManager = createMockEventManager(
         serverManager,
@@ -818,11 +831,14 @@ describe("CommandManager", () => {
         resolveShowServerUrls: vi.fn(async () => true),
       });
       const serverManager = new ServerManager(settingsStub, {
-        create: (_resolver, options) =>
-          createMockServer({
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
             options: { baseUrl: options.baseUrl },
             models: models.filter((m) => m.serverUrl === options.baseUrl),
-          }),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
       });
       const showUrlEventManager = createMockEventManager(
         serverManager,

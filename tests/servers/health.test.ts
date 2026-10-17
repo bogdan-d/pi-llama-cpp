@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ServerStatus } from "../../src/enums/serverStatus";
-import { Server } from "../../src/server";
+import { Server } from "../../src/servers/server";
 
 /**
  * Builds a `fetchFn` stub that returns the given response impl.

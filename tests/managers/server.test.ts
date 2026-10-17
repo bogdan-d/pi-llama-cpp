@@ -292,7 +292,6 @@ describe("ServerManager", () => {
 
   describe("timeout → skip → retry via /models", () => {
     it("should skip a TIMEOUT server on init, then register it on /models", async () => {
-      // Create real servers we can spy on
       const server1 = createMockServer({
         options: { baseUrl: "http://127.0.0.1:9931" },
       });
@@ -300,15 +299,18 @@ describe("ServerManager", () => {
         options: { baseUrl: "http://127.0.0.1:8081" },
       });
 
-      // Server1 will timeout during health check
-      vi.spyOn(server1, "isReady").mockResolvedValue(ServerStatus.TIMEOUT);
-      vi.spyOn(server2, "isReady").mockResolvedValue(ServerStatus.READY);
-
+      // Factory: with timeout → null+TIMEOUT for server1; without → server+READY
       const manager = new ServerManager(settingsStub, {
-        create: (_resolver, options) => {
-          return options.baseUrl === "http://127.0.0.1:9931"
-            ? server1
-            : server2;
+        create: async (_resolver, options, timeout?) => {
+          if (options.baseUrl === "http://127.0.0.1:9931") {
+            if (timeout !== undefined) {
+              return { server: null, status: ServerStatus.TIMEOUT };
+            }
+            server1.status = ServerStatus.READY;
+            return { server: server1, status: ServerStatus.READY };
+          }
+          server2.status = ServerStatus.READY;
+          return { server: server2, status: ServerStatus.READY };
         },
       });
 
@@ -348,15 +350,18 @@ describe("ServerManager", () => {
         options: { baseUrl: "http://127.0.0.1:8081" },
       });
 
-      // Server1 returns UNREACHABLE (non-200, non-timeout)
-      vi.spyOn(server1, "isReady").mockResolvedValue(ServerStatus.UNREACHABLE);
-      vi.spyOn(server2, "isReady").mockResolvedValue(ServerStatus.READY);
-
+      // Factory: with timeout → null+UNREACHABLE for server1; without → server+READY
       const manager = new ServerManager(settingsStub, {
-        create: (_resolver, options) => {
-          return options.baseUrl === "http://127.0.0.1:9931"
-            ? server1
-            : server2;
+        create: async (_resolver, options, timeout?) => {
+          if (options.baseUrl === "http://127.0.0.1:9931") {
+            if (timeout !== undefined) {
+              return { server: null, status: ServerStatus.UNREACHABLE };
+            }
+            server1.status = ServerStatus.READY;
+            return { server: server1, status: ServerStatus.READY };
+          }
+          server2.status = ServerStatus.READY;
+          return { server: server2, status: ServerStatus.READY };
         },
       });
 
@@ -400,7 +405,10 @@ describe("ServerManager", () => {
       );
 
       const manager = new ServerManager(settingsStub, {
-        create: () => server,
+        create: async () => {
+          server.status = ServerStatus.READY;
+          return { server, status: ServerStatus.READY };
+        },
       });
       vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
         configOf("http://127.0.0.1:9931"),

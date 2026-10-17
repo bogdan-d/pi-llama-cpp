@@ -1,4 +1,4 @@
-import { Server } from "../../../server";
+import { Server } from "../../../servers/server";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import { ServerIds } from "../../../utils/serverIds";

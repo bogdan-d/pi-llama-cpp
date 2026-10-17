@@ -1,5 +1,5 @@
 import type { ServerSettingsResolver } from "../interfaces/server";
-import type { Server } from "../server";
+import type { Server } from "../servers/server";
 import { SSEClient } from "./client";
 import { buildAuthHeaders } from "./fetch";
 import {

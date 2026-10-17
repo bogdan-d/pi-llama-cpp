@@ -8,12 +8,13 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { THINKING_BUDGETS } from "../../src/constants";
 import { defaultBaseUrl } from "../constants";
+import { ServerStatus } from "../../src/enums/serverStatus";
 import { Status } from "../../src/enums/status";
 import { EventManager } from "../../src/managers/events";
-import { BaseModel } from "../../src/models/baseModel";
+import { Model } from "../../src/models/model";
 import { ServerManager } from "../../src/managers/server";
 import { InflightTracker } from "../../src/managers/inflightTracker";
-import type { Server } from "../../src/server";
+import type { Server } from "../../src/servers/server";
 import { createMockModel } from "../mocks/model";
 import { createMockPi } from "../mocks/context";
 import { createMockServer, createTestServer } from "../mocks/server";
@@ -37,7 +38,7 @@ let tracker = new InflightTracker();
 const createStubServerManager = (servers: Server[]): ServerManager =>
   ({
     servers,
-    getServer: (model: BaseModel) =>
+    getServer: (model: Model) =>
       servers.find((s) => s.models.some((m) => m.id === model.id)),
     update: vi.fn(async () => {}),
   }) as Partial<ServerManager> as ServerManager;
@@ -529,14 +530,17 @@ describe("EventManager with a live ServerManager", () => {
       { baseUrl: "http://127.0.0.1:9931" },
     ]);
     const serverManager = new ServerManager(settingsStub, {
-      create: (_resolver, options) =>
-        createMockServer({
+      create: async (_resolver, options) => {
+        const server = createMockServer({
           options: { baseUrl: options.baseUrl },
           models:
             options.baseUrl === "http://127.0.0.1:8081"
               ? [createMockModel("model-b", { serverUrl: options.baseUrl })]
               : [createMockModel("model-a", { serverUrl: options.baseUrl })],
-        }),
+        });
+        server.status = ServerStatus.READY;
+        return { server, status: ServerStatus.READY };
+      },
     });
     const mockPi: ExtensionAPI = {
       registerProvider: vi.fn(),

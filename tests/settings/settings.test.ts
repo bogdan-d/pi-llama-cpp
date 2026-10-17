@@ -14,9 +14,9 @@ import type { ModelOverride } from "../../src/interfaces/settings";
 import { SettingsService } from "../../src/settings/settings";
 import { SettingsReader } from "../../src/settings/reader";
 import { SettingsWriter } from "../../src/settings/writer";
-import { Server } from "../../src/server";
 import { CredentialResolver } from "../../src/utils/credentialResolver";
 import { SettingsStore } from "../../src/settings/store";
+import { SingleServer } from "../../src/servers/singleServer";
 
 let manager: SettingsService;
 
@@ -162,7 +162,7 @@ describe("API key resolution", () => {
 
 describe("Server with custom id", () => {
   it("should use custom id as providerId when provided", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -171,7 +171,7 @@ describe("Server with custom id", () => {
   });
 
   it("should fall back to URL-based providerId when no custom id", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -179,7 +179,7 @@ describe("Server with custom id", () => {
   });
 
   it("should try custom id first in getApiKey(), then fall back to URL-based", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -205,7 +205,7 @@ describe("Server with custom id", () => {
   it("should return custom id key directly when found", () => {
     mockReadStoredCredential.mockReturnValue({ key: "custom-key" });
 
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -219,7 +219,7 @@ describe("Server with custom id", () => {
 
 describe("Server with custom name", () => {
   it("should use custom name as suffix in providerName", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customName: "Remote Server",
     });
@@ -228,7 +228,7 @@ describe("Server with custom name", () => {
   });
 
   it("should fall back to URL-based name when no custom name", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -236,7 +236,7 @@ describe("Server with custom name", () => {
   });
 
   it("should use custom name even with custom id", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
       customName: "Remote Server",
@@ -872,7 +872,7 @@ describe("resolveServerOverrides", () => {
 
 describe("Server with overrides", () => {
   it("should store and expose resolved overrides", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       overrides: {
         "model-a": { cost: { input: 0.2, output: 0.6 } },
@@ -889,7 +889,7 @@ describe("Server with overrides", () => {
   });
 
   it("should return undefined for findOverrideForModel when no overrides are provided", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -942,8 +942,10 @@ describe("resolveServerConfigs passes overrides", () => {
 });
 
 describe("Server.findOverrideForModel", () => {
-  function createServer(overrides: Record<string, ModelOverride>): Server {
-    return new Server(SettingsService.create(), {
+  function createServer(
+    overrides: Record<string, ModelOverride>,
+  ): SingleServer {
+    return new SingleServer(SettingsService.create(), {
       baseUrl: "http://127.0.0.1:9931",
       overrides,
     });

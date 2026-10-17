@@ -1,32 +1,8 @@
 import type { ModelOverride } from "./settings";
-import type { ModelsEndpoint } from "./endpoints/models";
-import type { PropsModelEndpoint } from "./endpoints/props";
-
-/**
- * Minimal server interface for {@link BaseModel}.
- * Decouples model classes from the concrete {@link Server} class,
- * breaking the circular dependency between models and server.
- */
-export interface IServer {
-  baseUrl: string;
-  providerId: string;
-  findOverrideForModel(modelId: string): ModelOverride | undefined;
-  fetchModelProps(modelId: string): Promise<PropsModelEndpoint>;
-  fetchModels(): Promise<ModelsEndpoint>;
-  postRequest(path: "load" | "unload", model: string): Promise<ModelsEndpoint>;
-  sseManager?: {
-    probeSSE(): Promise<boolean>;
-    subscribeToStatus(
-      modelId: string,
-    ): Promise<{ status: string; exit_code?: number }>;
-  };
-  llamaSwapLoad(model: string): Promise<void>;
-  llamaSwapUnload(model: string): Promise<void>;
-}
 
 /**
  * Minimal settings resolver for {@link Server}, `SSEManager`, and
- * `BaseModel`. Decouples all components from `SettingsService` —
+ * `Model`. Decouples all components from `SettingsService` —
  * consumers depend on this interface, not on the settings service.
  * Implemented by `SettingsService`.
  */

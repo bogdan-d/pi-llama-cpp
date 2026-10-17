@@ -27,7 +27,7 @@ import { ServerUrl } from "../utils/urls";
  * Owns all reading logic: merged settings, URL resolution, server configs,
  * API keys, timeouts, sort order, SSE/autoload/react flags, thinking level.
  * Implements {@link ServerSettingsResolver} so it can be injected into
- * `Server`, `SSEManager`, and `BaseModel`.
+ * `Server`, `SSEManager`, and `Model`.
  */
 export class SettingsReader implements ServerSettingsResolver {
   private warnings: string[] = [];

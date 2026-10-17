@@ -1,4 +1,4 @@
-import type { BaseModel } from "../models/baseModel";
+import type { Model } from "../models/model";
 
 /**
  * Tracks the model currently being loaded and its in-flight promise.
@@ -9,7 +9,7 @@ import type { BaseModel } from "../models/baseModel";
  * avoiding private static fields on a class.
  */
 export class InflightTracker {
-  inflightModel: BaseModel | null = null;
+  inflightModel: Model | null = null;
   inflightPromise: Promise<void> | null = null;
 
   /** Resets both fields to `null`. */
@@ -19,7 +19,7 @@ export class InflightTracker {
   }
 
   /** Sets the in-flight model and its promise. */
-  setInflight(model: BaseModel, promise: Promise<void>): void {
+  setInflight(model: Model, promise: Promise<void>): void {
     this.inflightModel = model;
     this.inflightPromise = promise;
   }

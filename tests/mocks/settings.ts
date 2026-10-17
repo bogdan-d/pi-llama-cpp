@@ -55,7 +55,7 @@ export const makeSettingsStub = (
 
 /**
  * Stub of the {@link ServerSettingsResolver} interface `Server`,
- * `SSEManager`, and `BaseModel` depend on. Defaults give every method a
+ * `SSEManager`, and `Model` depend on. Defaults give every method a
  * benign value; a case that cares passes just that method as an override.
  */
 export const makeResolverStub = (

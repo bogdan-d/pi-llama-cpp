@@ -1,12 +1,16 @@
 import type { ServerFactory } from "../../src/servers/serverFactory";
-import type { BaseModel } from "../../src/models/baseModel";
+import { ServerStatus } from "../../src/enums/serverStatus";
+import type { Model } from "../../src/models/model";
 import { createMockServer } from "./server";
 
 /**
  * Creates a default `ServerFactory` that produces unseeded mock servers.
  */
 export const createServerFactory = (): ServerFactory => ({
-  create: (resolver) => createMockServer({ resolver }),
+  create: async (resolver) => ({
+    server: createMockServer({ resolver }),
+    status: ServerStatus.READY,
+  }),
 });
 
 /**
@@ -14,10 +18,10 @@ export const createServerFactory = (): ServerFactory => ({
  * into each constructed server, keyed by baseUrl.
  */
 export const createSeededServerFactory = (
-  models: Record<string, BaseModel[]>,
+  models: Record<string, Model[]>,
   disconnects?: Record<string, () => void>,
 ): ServerFactory => ({
-  create: (resolver, options) => {
+  create: async (resolver, options) => {
     const serverOpts: Parameters<typeof createMockServer>[0] = {
       resolver,
       options: {
@@ -31,6 +35,8 @@ export const createSeededServerFactory = (
     if (disconnects?.[options.baseUrl]) {
       serverOpts.sse = { disconnect: disconnects[options.baseUrl] };
     }
-    return createMockServer(serverOpts);
+    const server = createMockServer(serverOpts);
+    server.status = ServerStatus.READY;
+    return { server, status: ServerStatus.READY };
   },
 });

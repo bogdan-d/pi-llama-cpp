@@ -8,7 +8,7 @@ import { errorMessage } from "../utils/errors";
 import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
 import type { SettingsService } from "../settings/settings";
-import { BaseModel } from "../models/baseModel";
+import { Model } from "../models/model";
 import { ServerManager } from "./server";
 import { InflightTracker, inflightTracker } from "./inflightTracker";
 
@@ -54,7 +54,7 @@ export class EventManager {
    * @param pi Pi extension API
    */
   private async autoLoadIfNeeded(
-    model: BaseModel,
+    model: Model,
     ctx: ExtensionContext,
     pi: ExtensionAPI,
   ): Promise<void> {
@@ -149,7 +149,7 @@ export class EventManager {
    * @param pi Pi extension API (for model switching and provider re-scan)
    */
   async loadWithFeedback(
-    model: BaseModel,
+    model: Model,
     ctx: ExtensionContext,
     pi: ExtensionAPI,
   ): Promise<void> {

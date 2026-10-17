@@ -7,8 +7,8 @@ import type { ServerSettingsResolver } from "../../src/interfaces/server";
 import type { ServerOptions } from "../../src/interfaces/server";
 import { SSEManager } from "../../src/sse/manager";
 import { makeResolverStub } from "./settings";
-import { BaseModel } from "../../src/models/baseModel";
-import { Server } from "../../src/server";
+import { Model } from "../../src/models/model";
+import { SingleServer } from "../../src/servers/singleServer";
 
 /** Default resolver stub — omit the resolver argument to use this. */
 const defaultResolver = makeResolverStub({
@@ -46,8 +46,8 @@ const guardFetch = (): typeof globalThis.fetch =>
 export interface CreateMockServerOptions {
   resolver?: ServerSettingsResolver;
   options?: Partial<ServerOptions>;
-  models?: BaseModel[];
-  overrides?: Partial<Server>;
+  models?: Model[];
+  overrides?: Partial<SingleServer>;
   sse?: { disconnect: () => void };
   apiClient?: ApiClient;
   /** Injectable fetch — routed into the Server's ApiClient and SSEManager. */
@@ -62,12 +62,12 @@ export interface CreateMockServerOptions {
  */
 export const createMockServer = (
   opts: CreateMockServerOptions = {},
-): Server => {
+): SingleServer => {
   const { resolver, options, models, overrides, sse, apiClient, fetchFn } =
     opts;
   const effectiveResolver = resolver ?? defaultResolver;
 
-  const server = new Server(
+  const server = new SingleServer(
     effectiveResolver,
     {
       baseUrl: options?.baseUrl ?? defaultBaseUrl(),
@@ -81,22 +81,23 @@ export const createMockServer = (
   if (models) server.models.push(...models);
   // Create an SSEManager so `server.sseManager` is available for tests
   // that call `probeSSE()` etc. — initialize() would do this in real code.
-  server.setSseManager(
-    new SSEManager(
-      server,
-      effectiveResolver,
-      undefined,
-      fetchFn ?? guardFetch(),
-    ),
+  const sseManager = new SSEManager(
+    server,
+    effectiveResolver,
+    undefined,
+    fetchFn ?? guardFetch(),
   );
+  if (sse) {
+    sseManager.disconnect = sse.disconnect;
+  }
+  server.sse = sseManager;
   // Stub initialize to a no-op so seeded models aren't overwritten by
   // network fetches — tests that need the real flow pass an override.
   server.initialize = overrides?.initialize ?? (async () => {});
-  if (sse) {
-    server.setSseDisconnect(sse.disconnect);
-  }
   return Object.assign(server, overrides, {
     initialize: server.initialize,
+    loadModel: vi.fn().mockResolvedValue(undefined),
+    unloadModel: vi.fn().mockResolvedValue(undefined),
   });
 };
 
@@ -106,9 +107,9 @@ export const createMockServer = (
  */
 export const createTestServer = (
   baseUrl: string,
-  models: BaseModel[],
+  models: Model[],
   disconnects?: () => void,
-): Server =>
+): SingleServer =>
   createMockServer({
     resolver: mockResolver,
     options: { baseUrl },

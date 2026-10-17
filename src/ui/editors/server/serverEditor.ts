@@ -4,7 +4,7 @@ import { ServerTimeoutSettingsItem } from "../../../settings/items/serverTimeout
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { SettingsService } from "../../../settings/settings";
-import { Server } from "../../../server";
+import { Server } from "../../../servers/server";
 import { ServerIds } from "../../../utils/serverIds";
 import { TITLES, authRequiredMessage } from "../../strings";
 import type { ServerSettingsListOptions } from "../editorOptions";
