@@ -47,7 +47,7 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
       submenu: (_cv, done) => {
         const current = this.entries()[i] ?? entry;
         const fieldItems = builder.buildFieldItems(current);
-        const fieldList = SettingsListFactory.create(
+        const fieldList = SettingsListFactory.createResettable(
           fieldItems,
           () => {
             this.fieldList = null;
@@ -57,6 +57,8 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
             this.trackSubmenu(false);
           },
           (field, value) => void this.handleFieldChange(i, field, value),
+          (field) => this.handleFieldReset(i, field),
+          this.options.tui,
         );
         this.fieldList = fieldList;
         this.trackSubmenu(true);
@@ -101,6 +103,32 @@ export class OverrideEntryListEditor extends ListEditor<OverrideSettingsListOpti
         );
       },
     );
+  }
+
+  /** Handle an `r` reset from a row's field submenu: removes the field's
+   * key(s) from the override (falling back to the resolved default) and
+   * persists. No-op when the field wasn't set (nothing to remove) —
+   * `pattern` never removes anything, so it is inert there by design. */
+  private handleFieldReset(entryIndex: number, field: string): void {
+    const entry = this.entries()[entryIndex];
+    if (!entry) return;
+    const fieldDef = OverrideFields.byId(field);
+    const nextOverride: ModelOverride = { ...entry.override };
+    if (!fieldDef.remove(nextOverride)) return;
+
+    const next = this.updateEntry(entryIndex, entry.pattern, nextOverride);
+    this.commitFieldChange(next, null, () => {
+      // Refresh the entry row's summary in place
+      this.settingsList?.updateValue(
+        `entry-${entryIndex}`,
+        OverrideSummary.of(nextOverride),
+      );
+      // Refresh the reset row in the open field submenu
+      this.fieldList?.updateValue(
+        field,
+        fieldDef.displayValue(new OverrideEntry(entry.pattern, nextOverride)),
+      );
+    });
   }
 
   protected override beginAdd(): void {

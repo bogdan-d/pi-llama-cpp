@@ -27,6 +27,13 @@ export class CapabilitiesField extends OverrideField {
           : undefined;
   }
 
+  /** Removes the `capabilities` key. */
+  override remove(override: ModelOverride): boolean {
+    const had = override.capabilities !== undefined;
+    delete override.capabilities;
+    return had;
+  }
+
   /** Appears in the summary only when non-empty. */
   override summaryPart(override: ModelOverride): string | null {
     return override.capabilities?.length

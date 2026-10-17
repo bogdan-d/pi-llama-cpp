@@ -227,6 +227,86 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
   });
 });
 
+describe("OverrideEntryListEditor field reset (r)", () => {
+  const DOWN = "\x1b[B"; // tui.select.down
+
+  const build = () => {
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const list = new OverrideSettingsList({
+      tui: createMockTui(),
+      theme: createMockTheme(),
+      keybindings: createMockKeybindings(),
+      servers: [
+        {
+          url: "http://x:1",
+          overrides: { "gpt-*": { cost: { input: 0.2 } } },
+        },
+      ] as LlamaServer[],
+      persist,
+      done: vi.fn(),
+      onError: vi.fn(),
+      onChanged: vi.fn(),
+    });
+    return { list, persist };
+  };
+
+  /** Server row → field submenu with the cursor on `cost.input`. */
+  const openCostInput = (list: OverrideSettingsList) => {
+    list.handleInput(ENTER); // drill into the server row (entry list)
+    list.handleInput(ENTER); // open the field submenu (cursor: pattern)
+    list.handleInput(DOWN); // cursor: cost.input
+  };
+
+  it("removes the field from the override and persists on r", async () => {
+    const { list, persist } = build();
+
+    openCostInput(list);
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).toHaveBeenCalledWith([
+      { url: "http://x:1", overrides: { "gpt-*": {} } },
+    ]);
+    // The reset row falls back to the default display ("0"), and the
+    // stale value is gone
+    const rendered = list.render(80).join("\n");
+    expect(rendered).not.toContain("0.2");
+  });
+
+  it("does nothing when the field is already unset", async () => {
+    const { list, persist } = build();
+
+    openCostInput(list);
+    list.handleInput(DOWN); // cursor: cost.output (not set)
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on the pattern row", async () => {
+    const { list, persist } = build();
+
+    list.handleInput(ENTER); // drill into the server row (entry list)
+    list.handleInput(ENTER); // open the field submenu (cursor: pattern)
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("offers no reset on the top-level server list", async () => {
+    const { list, persist } = build();
+
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+    // The hint must not advertise the removed shortcut
+    expect(list.render(80).join("\n")).not.toContain("r reset to default");
+  });
+});
+
 describe("OverrideSettingsList escape navigation", () => {
   const build = () => {
     const done = vi.fn();

@@ -1,7 +1,7 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { access } from "node:fs/promises";
 import { SETTINGS_KEY } from "../constants";
-import { LlamaSettings } from "../interfaces/settings";
+import type { LlamaSettings } from "../interfaces/settings";
 import { SettingsStore } from "./store";
 
 /**

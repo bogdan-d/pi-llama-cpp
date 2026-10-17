@@ -43,6 +43,16 @@ export abstract class OverrideField extends SettingField<OverrideEntry> {
     // no-op — override in subclasses that need to mutate the override
   }
 
+  /** Removes this field's key(s) from the override object — the `r`
+   * "reset to default" action, so the resolved model falls back to the
+   * built-in default. Mutates `override` in place. Returns `true` when
+   * something was actually removed, `false` when the field wasn't set
+   * (the editor skips the persist round-trip in that case). Default:
+   * `false` — resettable fields override this. */
+  remove(_override: ModelOverride): boolean {
+    return false;
+  }
+
   /** One `term: value` part of the entry-row summary (see
    * {@link OverrideSummary.of}), or `null` when the field shouldn't
    * appear (unset/zero values — each field decides). The pattern is the

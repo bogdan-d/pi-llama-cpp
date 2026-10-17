@@ -47,6 +47,13 @@ export class NumericField extends OverrideField {
     else delete override[this.id];
   }
 
+  /** Removes the field's key. */
+  override remove(override: ModelOverride): boolean {
+    const had = override[this.id] !== undefined;
+    delete override[this.id];
+    return had;
+  }
+
   /** Appears in the summary only when set. */
   override summaryPart(override: ModelOverride): string | null {
     const value = override[this.id];

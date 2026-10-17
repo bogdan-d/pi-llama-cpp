@@ -56,6 +56,17 @@ export class CostField extends OverrideField {
     return Object.keys(next).length > 0 ? next : undefined;
   }
 
+  /** Removes this cost key (and the whole `cost` object when it is left
+   * empty). */
+  override remove(override: ModelOverride): boolean {
+    const had = override.cost?.[this.key] !== undefined;
+    if (override.cost) {
+      delete override.cost[this.key];
+      if (Object.keys(override.cost).length === 0) delete override.cost;
+    }
+    return had;
+  }
+
   /** Appears in the summary only when a non-zero cost is set. */
   override summaryPart(override: ModelOverride): string | null {
     const value = override.cost?.[this.key];
