@@ -1,12 +1,15 @@
 {
   "name": "pi-llama-cpp",
   "version": "0.17.0",
-  "description": "Pi extension for llama.cpp integration. Supports router, single and legacy models. Supports multiple servers.",
+  "description": "Pi extension for llama.cpp integration. Supports multiple router/single/legacy/llama-swap servers.",
   "keywords": [
     "pi",
     "pi-package",
     "pi-extension",
     "llama-cpp"
+  ],
+  "files": [
+    "src/**"
   ],
   "author": "Gabriel Sanhueza",
   "license": "MIT",
