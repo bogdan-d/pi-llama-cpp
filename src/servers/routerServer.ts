@@ -85,9 +85,11 @@ export class RouterServer extends Server {
    * Orchestrate model unloading (status pre-check + SSE pre-subscription +
    * HTTP call + SSE or polling wait).
    *
-   * Short-circuits models already in the UNLOADED state: they emit no
-   * further status change, so waiting for an SSE "unloaded" event would
-   * stall until the polling timeout (this is what froze `/models unload`).
+   * Short-circuits models that are not LOADED or SLEEPING (mirror of
+   * `loadModel`'s early check): models in any other state emit no
+   * "unloaded" transition, so waiting for an SSE "unloaded" event would
+   * stall until the polling timeout (this is what froze `/models unload`),
+   * and unloading them may be rejected by the server outright.
    *
    * Subscribes to SSE *before* issuing the unload POST: llama-server
    * emits the terminal "unloaded" status change as soon as the unload
@@ -97,7 +99,8 @@ export class RouterServer extends Server {
    * @throws When the model fails to unload.
    */
   override async unloadModel(modelId: string): Promise<void> {
-    if ((await this.getModelStatus(modelId)) === Status.UNLOADED) return;
+    const status = await this.getModelStatus(modelId);
+    if (status !== Status.LOADED && status !== Status.SLEEPING) return;
 
     // Pre-subscribe before the POST so the terminal event can't be missed.
     const sse = this.sseManager;

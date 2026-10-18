@@ -471,15 +471,17 @@ describe("RouterServer", () => {
   // ── RouterServer: unloadModel with SSE ──
 
   describe("unloadModel", () => {
-    it("should short-circuit when the model is already unloaded", async () => {
-      const server = createServer();
-      server.getModelStatus = vi.fn().mockResolvedValue(Status.UNLOADED);
-      const subscribe = vi.fn();
-      server.sse!.subscribeToStatus = subscribe as never;
-      server.postRequest = vi.fn();
-      await server.unloadModel("m");
-      expect(server.postRequest).not.toHaveBeenCalled();
-      expect(subscribe).not.toHaveBeenCalled();
+    it("should short-circuit when the model is not loaded or sleeping", async () => {
+      for (const status of [Status.UNLOADED, Status.LOADING, Status.FAILED]) {
+        const server = createServer();
+        server.getModelStatus = vi.fn().mockResolvedValue(status);
+        const subscribe = vi.fn();
+        server.sse!.subscribeToStatus = subscribe as never;
+        server.postRequest = vi.fn();
+        await server.unloadModel("m");
+        expect(server.postRequest).not.toHaveBeenCalled();
+        expect(subscribe).not.toHaveBeenCalled();
+      }
     });
 
     it("should subscribe to SSE before issuing the unload POST", async () => {
