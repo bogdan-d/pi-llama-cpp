@@ -1,5 +1,6 @@
 import { initTheme } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { API_KEY_PLACEHOLDER } from "../../src/constants";
 import type { LlamaServer } from "../../src/interfaces/settings";
 import { ConfirmDialog } from "../../src/ui/dialog/confirm";
 import { InputDialog } from "../../src/ui/dialog/input";
@@ -124,6 +125,44 @@ describe("ConfirmDialog", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("confirms when the user navigates to Cancel then selects it", () => {
+    const { dialog, onConfirm, onCancel } = build();
+    const DOWN = "\x1b[B";
+    dialog.handleInput(DOWN); // move to Cancel
+    dialog.handleInput(ENTER); // select Cancel
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("InputDialog error clearing", () => {
+  it("clears and re-shows the error when submitting invalid data twice", () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    const dialog = new InputDialog({
+      theme: createMockTheme(),
+      tui: createMockTui(),
+      title: "Dialog",
+      message: "Enter URL",
+      validate: (raw) => (raw.startsWith("http") ? raw : null),
+      onSubmit,
+      onCancel,
+    });
+
+    // First invalid submit
+    for (const ch of "bad") dialog.handleInput(ch);
+    dialog.handleInput(ENTER);
+    expect(dialog.render(60).join("\n")).toContain('Invalid value "bad"');
+
+    // Second invalid submit — should clear old error then show new one
+    const CLEAR = "\x15"; // tui.editor.deleteToLineStart
+    for (const ch of CLEAR) dialog.handleInput(ch);
+    for (const ch of "also-bad") dialog.handleInput(ch);
+    dialog.handleInput(ENTER);
+    expect(dialog.render(60).join("\n")).toContain('Invalid value "also-bad"');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
 
 describe("ServerSettingsList add wizard", () => {
@@ -139,7 +178,7 @@ describe("ServerSettingsList add wizard", () => {
       persist,
       done,
       onError,
-      authResolver: () => Promise.resolve("sk-placeholder"),
+      authResolver: () => Promise.resolve(API_KEY_PLACEHOLDER),
     });
     return { editor, persist, done, onError };
   };

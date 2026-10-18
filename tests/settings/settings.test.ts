@@ -5,6 +5,7 @@ import {
   API_KEY_PLACEHOLDER,
   LLAMA_SERVER_URL,
   PROVIDER_PREFIX,
+  THINKING_BUDGETS,
 } from "../../src/constants";
 import { PollingIntervalSettingsItem } from "../../src/settings/items/pollingInterval";
 import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
@@ -1195,5 +1196,113 @@ describe("URL resolution warnings", () => {
     await manager.resolveUrls();
     expect(manager.takeWarnings()).toHaveLength(1);
     expect(manager.takeWarnings()).toEqual([]);
+  });
+});
+
+describe("getLlamaServers", () => {
+  it("should return the servers list from settings", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [
+          { url: "http://127.0.0.1:9931" },
+          { url: "http://127.0.0.1:8081" },
+        ],
+      },
+    });
+
+    const result = await manager.getLlamaServers();
+    expect(result).toHaveLength(2);
+    expect(result[0].url).toBe("http://127.0.0.1:9931");
+  });
+
+  it("should return an empty array when no servers are configured", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {},
+    });
+
+    const result = await manager.getLlamaServers();
+    expect(result).toEqual([]);
+  });
+});
+
+describe("resolveServerTimeout", () => {
+  it("should return the server timeout from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { serverTimeout: 5000 },
+    });
+
+    expect(await manager.resolveServerTimeout()).toBe(5000);
+  });
+});
+
+describe("resolvePollingInterval", () => {
+  it("should return the polling interval from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { pollingInterval: 20 },
+    });
+
+    expect(await manager.resolvePollingInterval()).toBe(20);
+  });
+});
+
+describe("resolvePollingTimeout", () => {
+  it("should return the polling timeout from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { pollingTimeout: 30000 },
+    });
+
+    expect(await manager.resolvePollingTimeout()).toBe(30000);
+  });
+});
+
+describe("resolveEnableSSE", () => {
+  it("should return true when enableSSE is not set (default)", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {},
+    });
+
+    expect(await manager.resolveEnableSSE()).toBe(true);
+  });
+
+  it("should return the configured enableSSE value", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { enableSSE: false },
+    });
+
+    expect(await manager.resolveEnableSSE()).toBe(false);
+  });
+});
+
+describe("resolveThinkingBudgets undefined fallback", () => {
+  it("should return defaults when getThinkingBudgets returns undefined", () => {
+    mockSettingsManager.getThinkingBudgets.mockReturnValue(undefined);
+
+    const result = manager.resolveThinkingBudgets();
+
+    expect(result).toEqual(THINKING_BUDGETS);
+  });
+});
+
+describe("parseUrls edge cases", () => {
+  it("should skip empty URL segments from trailing semicolons", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://good:9931;" }],
+      },
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931"]);
+  });
+
+  it("should skip empty URL segments from consecutive semicolons", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://good:9931;;http://also-good:8080" }],
+      },
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931", "http://also-good:8080"]);
   });
 });

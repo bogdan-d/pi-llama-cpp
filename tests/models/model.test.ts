@@ -52,6 +52,12 @@ describe("Model (facade)", () => {
     });
   });
 
+  describe("serverId", () => {
+    it("returns the server provider ID", () => {
+      expect(createModel().serverId).toBe("llama-server=http://127.0.0.1:9931");
+    });
+  });
+
   describe("reasoning", () => {
     it("defaults to true", () => {
       const model = createModel();
@@ -74,6 +80,33 @@ describe("Model (facade)", () => {
         server,
       );
       expect(model.reasoning).toBe(false);
+    });
+  });
+
+  describe("getLabel", () => {
+    it("returns icon + name for loaded status", async () => {
+      const model = createModel();
+      const label = await model.getLabel();
+      expect(label).toBe("🟢 test-alias");
+    });
+
+    it("returns correct icon for unloaded status", async () => {
+      const server = createMockServer({
+        overrides: { getModelStatus: () => Promise.resolve(Status.UNLOADED) },
+      });
+      const model = new Model(
+        {
+          id: "test-model",
+          aliases: ["my-alias"],
+          tags: [],
+          object: "model",
+          owned_by: "test",
+          created: Date.now(),
+        },
+        server,
+      );
+      const label = await model.getLabel();
+      expect(label).toBe("⚪ my-alias");
     });
   });
 

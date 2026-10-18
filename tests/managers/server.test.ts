@@ -419,6 +419,52 @@ describe("ServerManager", () => {
       expect(mockPi.registerProvider).not.toHaveBeenCalled();
       expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
     });
+
+    it("should remove a server from the list when registerProvider throws", async () => {
+      const server = createMockServer({
+        options: { baseUrl: "http://127.0.0.1:9931" },
+      });
+      // registerProvider calls server.initialize which we'll make throw
+      vi.spyOn(server, "initialize").mockRejectedValue(
+        new Error("Registration failed"),
+      );
+
+      const manager = new ServerManager(settingsStub, {
+        create: async () => {
+          server.status = ServerStatus.READY;
+          return { server, status: ServerStatus.READY };
+        },
+      });
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+      ]);
+
+      await manager.update(mockPi);
+
+      expect(manager.servers).toHaveLength(0);
+      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+    });
+  });
+
+  describe("UNAUTHORIZED status", () => {
+    it("should add a warning but not failedUrls for UNAUTHORIZED servers", async () => {
+      const manager = new ServerManager(settingsStub, {
+        create: async () => ({
+          server: null,
+          status: ServerStatus.UNAUTHORIZED,
+        }),
+      });
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+      ]);
+
+      await manager.update(mockPi);
+
+      expect(manager.failedUrls).not.toContain("http://127.0.0.1:9931");
+      const warnings = manager.getWarnings();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("http://127.0.0.1:9931");
+    });
   });
 
   describe("sortBy", () => {
@@ -542,5 +588,75 @@ describe("ServerManager", () => {
       expect(allModels[0]?.id).toBe("model-b");
       expect(allModels[1]?.id).toBe("model-a");
     });
+
+    it("should use ID as tiebreaker when names are equal (asc-name)", async () => {
+      sortBy().mockResolvedValue("asc-name");
+
+      const manager = new ServerManager(
+        settingsStub,
+        createSeededServerFactory({
+          "http://127.0.0.1:9931": [
+            createMockModel("same-name", { id: "model-z" }),
+            createMockModel("same-name", { id: "model-a" }),
+          ],
+        }),
+      );
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+      ]);
+      await manager.update(mockPi);
+
+      const allModels = await manager.getAllModels();
+
+      expect(allModels).toHaveLength(2);
+      expect(allModels[0]?.id).toBe("model-a");
+      expect(allModels[1]?.id).toBe("model-z");
+    });
+
+    it("should use ID as tiebreaker when names are equal (desc-name)", async () => {
+      sortBy().mockResolvedValue("desc-name");
+
+      const manager = new ServerManager(
+        settingsStub,
+        createSeededServerFactory({
+          "http://127.0.0.1:9931": [
+            createMockModel("same-name", { id: "model-a" }),
+            createMockModel("same-name", { id: "model-z" }),
+          ],
+        }),
+      );
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931"),
+      ]);
+      await manager.update(mockPi);
+
+      const allModels = await manager.getAllModels();
+
+      expect(allModels).toHaveLength(2);
+      // Names are equal, tiebreaker is ascending by ID
+      expect(allModels[0]?.id).toBe("model-a");
+      expect(allModels[1]?.id).toBe("model-z");
+    });
+  });
+});
+
+describe("initialize", () => {
+  it("should call update with the resolved server timeout", async () => {
+    vi.mocked(settingsStub.resolveTimeouts).mockResolvedValue({
+      pollingInterval: 10,
+      pollingTimeout: 5000,
+      serverTimeout: 3000,
+    });
+    vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([]);
+
+    const manager = new ServerManager(
+      settingsStub,
+      createSeededServerFactory({}),
+    );
+    await manager.initialize(mockPi);
+
+    expect(mockPi.registerProvider).not.toHaveBeenCalled();
+    // update was called with the server timeout
+    expect(settingsStub.resolveTimeouts).toHaveBeenCalled();
   });
 });

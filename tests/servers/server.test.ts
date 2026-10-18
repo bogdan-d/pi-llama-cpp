@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { API_KEY_PLACEHOLDER } from "../../src/constants";
 import type { SettingsService } from "../../src/settings/settings";
 import { Server } from "../../src/servers/server";
 import { SingleServer } from "../../src/servers/singleServer";
@@ -77,7 +78,7 @@ describe("Server apiKey", () => {
   it("should use key from customId resolver", () => {
     const customResolver = makeResolverStub({
       resolveApiKey: vi.fn((id) =>
-        id === "my-server" ? "custom-key" : "sk-placeholder",
+        id === "my-server" ? "custom-key" : API_KEY_PLACEHOLDER,
       ),
     });
     const server = new SingleServer(customResolver, {

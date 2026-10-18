@@ -5,8 +5,8 @@ import type {
 import type { ModelSelectEvent } from "../../src/interfaces/events";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { THINKING_BUDGETS } from "../../src/constants";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { READABLE_TIMEOUT, THINKING_BUDGETS } from "../../src/constants";
 import { defaultBaseUrl } from "../constants";
 import { ServerStatus } from "../../src/enums/serverStatus";
 import { Status } from "../../src/enums/status";
@@ -367,6 +367,20 @@ describe("EventManager.onModelSelect", () => {
 
     expect(ctx.ui.notify).not.toHaveBeenCalled();
   });
+
+  it("should return early when the model is not found in the server", async () => {
+    const server = createMockServer({
+      models: ["model-a"].map((id) => createMockModel(id)),
+    });
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    const event = createModelSelectEvent(server.providerId, "model-z");
+
+    await eventManager.onModelSelect(event, ctx, mockPi);
+
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+  });
 });
 
 describe("EventManager.autoLoadIfNeeded (via onBeforeProviderRequest)", () => {
@@ -522,6 +536,84 @@ describe("EventManager.loadWithFeedback with SSE", () => {
   });
 });
 
+describe("EventManager.loadWithFeedback", () => {
+  it("should call pi.setModel when the model is found in the registry", async () => {
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
+
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+
+    // Build a context with a modelRegistry that finds the model
+    const findModel = { id: "pi-model-id" };
+    const ctx = {
+      ui: { notify: vi.fn(), setStatus: vi.fn() },
+      modelRegistry: { find: vi.fn().mockReturnValue(findModel) },
+    } as unknown as ExtensionContext;
+
+    await eventManager.loadWithFeedback(server.models[0], ctx, mockPi);
+
+    expect(ctx.modelRegistry.find).toHaveBeenCalledWith(
+      server.models[0].serverId,
+      "model-a",
+    );
+    expect(mockPi.setModel).toHaveBeenCalledWith(findModel);
+  });
+});
+
+describe("EventManager.onSessionBeforeSwitch", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should notify when a session changes during an in-flight load", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+
+    // Simulate an inflight model
+    tracker.setInflight(
+      server.models[0],
+      new Promise(() => {}), // never resolves
+    );
+
+    const ctx = createMockCtx();
+    const promise = eventManager.onSessionBeforeSwitch(ctx);
+
+    // Advance timers to let the setTimeout resolve
+    await vi.advanceTimersByTimeAsync(READABLE_TIMEOUT);
+    await promise;
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Session change detected"),
+      "warning",
+    );
+  });
+
+  it("should do nothing when there is no inflight model", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a"),
+    ]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.onSessionBeforeSwitch(ctx);
+
+    expect(ctx.ui.notify).not.toHaveBeenCalled();
+  });
+});
+
 describe("EventManager with a live ServerManager", () => {
   it("should observe servers added after construction", async () => {
     // Models are seeded into manager-built Servers via the server factory,
@@ -577,6 +669,72 @@ describe("EventManager with a live ServerManager", () => {
     expect(selectCtx.ui.notify).toHaveBeenCalledWith(
       "Loading model-b...",
       "info",
+    );
+  });
+});
+
+describe("loadWithFeedback SSE progress with stage", () => {
+  it("should include the stage in the progress notification", async () => {
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
+    vi.mocked(settingsStub.resolveEnableSSE).mockResolvedValue(true);
+
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-b", {
+        getStatus: vi.fn().mockResolvedValue(Status.UNLOADED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    vi.spyOn(server.sseManager!, "probeSSE").mockResolvedValue(true);
+    vi.spyOn(server.sseManager!, "subscribeToProgress").mockImplementation(
+      (_modelId, callback) => {
+        callback(50, "text_model");
+        return () => {};
+      },
+    );
+
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-b")),
+      ctx,
+      mockPi,
+    );
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Loading model-b... [50% (text_model)]",
+      "info",
+    );
+  });
+});
+
+describe("loadWithFeedback model failure", () => {
+  it("should notify with error when model load results in FAILED status", async () => {
+    vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
+    vi.mocked(settingsStub.resolveEnableSSE).mockResolvedValue(false);
+
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-c", {
+        getStatus: vi
+          .fn()
+          .mockResolvedValueOnce(Status.UNLOADED)
+          .mockResolvedValueOnce(Status.FAILED),
+        load: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.onBeforeProviderRequest(
+      createBeforeProviderRequestEvent(createPayload("model-c")),
+      ctx,
+      mockPi,
+    );
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Failed to load model model-c",
+      "error",
     );
   });
 });

@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { API_KEY_PLACEHOLDER } from "../../src/constants";
 import { defaultBaseUrl } from "../constants";
 import { ApiClient } from "../../src/api/client";
 import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
@@ -12,7 +13,7 @@ import { SingleServer } from "../../src/servers/singleServer";
 
 /** Default resolver stub — omit the resolver argument to use this. */
 const defaultResolver = makeResolverStub({
-  resolveApiKey: vi.fn(() => "sk-placeholder"),
+  resolveApiKey: vi.fn(() => API_KEY_PLACEHOLDER),
   resolvePollingTimeout: vi.fn(
     async () => PollingTimeoutSettingsItem.defaultValue,
   ),
