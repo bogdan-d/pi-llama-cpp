@@ -471,8 +471,43 @@ describe("RouterServer", () => {
   // ── RouterServer: unloadModel with SSE ──
 
   describe("unloadModel", () => {
+    it("should short-circuit when the model is already unloaded", async () => {
+      const server = createServer();
+      server.getModelStatus = vi.fn().mockResolvedValue(Status.UNLOADED);
+      const subscribe = vi.fn();
+      server.sse!.subscribeToStatus = subscribe as never;
+      server.postRequest = vi.fn();
+      await server.unloadModel("m");
+      expect(server.postRequest).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    });
+
+    it("should subscribe to SSE before issuing the unload POST", async () => {
+      const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED) // pre-check
+        .mockResolvedValue(Status.UNLOADED); // final check
+      const callOrder: string[] = [];
+      server.sse!.subscribeToStatus = vi.fn().mockImplementation(() => {
+        callOrder.push("subscribe");
+        return Promise.resolve({ status: "unloaded" });
+      }) as never;
+      server.postRequest = vi.fn().mockImplementation(() => {
+        callOrder.push("post");
+        return Promise.resolve({});
+      });
+      server.resolver.resolvePollingInterval = vi.fn(async () => 0);
+      await server.unloadModel("m");
+      expect(callOrder).toEqual(["subscribe", "post"]);
+    });
+
     it("should call POST /models/unload then use SSE to wait for unloaded", async () => {
       const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED) // pre-check
+        .mockResolvedValue(Status.UNLOADED); // final check
       server.sse!.subscribeToStatus = vi.fn().mockResolvedValue({
         status: "unloaded",
       });
@@ -484,6 +519,10 @@ describe("RouterServer", () => {
 
     it("should throw when SSE reports non-unloaded status", async () => {
       const server = createServer();
+      server.getModelStatus = vi
+        .fn()
+        .mockResolvedValueOnce(Status.LOADED) // pre-check
+        .mockResolvedValue(Status.UNLOADED); // final check
       server.sse!.subscribeToStatus = vi.fn().mockResolvedValue({
         status: "loaded",
       });

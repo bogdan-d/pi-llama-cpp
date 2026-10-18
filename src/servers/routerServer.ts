@@ -82,22 +82,43 @@ export class RouterServer extends Server {
   }
 
   /**
-   * Orchestrate model unloading (HTTP call + SSE or polling wait).
+   * Orchestrate model unloading (status pre-check + SSE pre-subscription +
+   * HTTP call + SSE or polling wait).
+   *
+   * Short-circuits models already in the UNLOADED state: they emit no
+   * further status change, so waiting for an SSE "unloaded" event would
+   * stall until the polling timeout (this is what froze `/models unload`).
+   *
+   * Subscribes to SSE *before* issuing the unload POST: llama-server
+   * emits the terminal "unloaded" status change as soon as the unload
+   * runs, so subscribing afterwards can miss the event entirely.
    *
    * @param modelId — The model ID to unload.
    * @throws When the model fails to unload.
    */
   override async unloadModel(modelId: string): Promise<void> {
-    await this.postRequest("unload", modelId);
+    if ((await this.getModelStatus(modelId)) === Status.UNLOADED) return;
 
-    // SSE or polling fallback
+    // Pre-subscribe before the POST so the terminal event can't be missed.
     const sse = this.sseManager;
-    if (sse) {
+    const sseWait = sse ? sse.subscribeToStatus(modelId) : null;
+    // If the subscription is abandoned (e.g. the POST fails), swallow its
+    // eventual rejection so it can't surface as unhandled.
+    sseWait?.catch(() => {});
+
+    try {
+      await this.postRequest("unload", modelId);
+    } catch {
+      throw new Error(`Model unload failed: ${modelId}`);
+    }
+
+    if (sseWait) {
       try {
-        const { status: sseStatus } = await sse.subscribeToStatus(modelId);
+        const { status: sseStatus } = await sseWait;
         if (sseStatus !== Status.UNLOADED) {
           throw new Error(`Model unload failed: ${modelId}`);
         }
+        return;
       } catch (err) {
         if (
           err instanceof Error &&
@@ -105,26 +126,18 @@ export class RouterServer extends Server {
         ) {
           throw err;
         }
-        try {
-          await this.pollModelStatus(modelId, Status.UNLOADED);
-          const finalStatus = await this.getModelStatus(modelId);
-          if (finalStatus !== Status.UNLOADED) {
-            throw new Error(`Model unload failed: ${modelId}`);
-          }
-        } catch {
-          throw new Error(`Model unload failed: ${modelId}`);
-        }
+        // SSE timed out or the connection failed — fall back to polling.
       }
-    } else {
-      try {
-        await this.pollModelStatus(modelId, Status.UNLOADED);
-        const finalStatus = await this.getModelStatus(modelId);
-        if (finalStatus !== Status.UNLOADED) {
-          throw new Error(`Model unload failed: ${modelId}`);
-        }
-      } catch {
+    }
+
+    try {
+      await this.pollModelStatus(modelId, Status.UNLOADED);
+      const finalStatus = await this.getModelStatus(modelId);
+      if (finalStatus !== Status.UNLOADED) {
         throw new Error(`Model unload failed: ${modelId}`);
       }
+    } catch {
+      throw new Error(`Model unload failed: ${modelId}`);
     }
   }
 
