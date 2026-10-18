@@ -43,7 +43,7 @@ export class ServerDisplay {
 /**
  * Emoji indicators for server health status.
  */
-const SERVER_STATUS_ICONS: Record<ServerStatus, string> = {
+export const SERVER_STATUS_ICONS: Record<ServerStatus, string> = {
   [ServerStatus.READY]: "🟢",
   [ServerStatus.TIMEOUT]: "🟡",
   [ServerStatus.UNREACHABLE]: "🔴",

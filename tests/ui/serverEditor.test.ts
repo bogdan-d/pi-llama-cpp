@@ -3,7 +3,10 @@ import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { LlamaServer } from "../../src/interfaces/settings";
 import { ServerStatus } from "../../src/enums/serverStatus";
 import { Server } from "../../src/servers/server";
-import { ServerDisplay } from "../../src/ui/editors/server/utils";
+import {
+  ServerDisplay,
+  SERVER_STATUS_ICONS,
+} from "../../src/ui/editors/server/utils";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
 import type { ServerSettingsListOptions } from "../../src/ui/editors/editorOptions";
 import { createMockTui } from "../mocks/tui";
@@ -33,7 +36,9 @@ const makeOptions = (
 
 beforeEach(() => {
   initTheme();
-  vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue("🟢");
+  vi.spyOn(ServerDisplay, "healthEmoji").mockResolvedValue(
+    SERVER_STATUS_ICONS[ServerStatus.READY],
+  );
 });
 
 describe("ServerSettingsList.handleFieldChange", () => {
