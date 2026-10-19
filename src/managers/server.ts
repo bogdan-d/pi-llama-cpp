@@ -66,8 +66,17 @@ export class ServerManager {
     // (add / remove / URL / id / name) apply on the next scan. Fresh
     // instances every scan: consumers never see a mutated Server.
     const fresh: Server[] = [];
-    const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
+    const seenUrls = new Set<string>(); // dedupe repeated URLs
+    const seen = new Set<string>(); // dedupe repeated providerIds
     for (const options of await this.settings.resolveServerConfigs()) {
+      if (seenUrls.has(options.baseUrl)) {
+        this.warnings.push(
+          `Duplicate server URL '${options.baseUrl}' — skipping`,
+        );
+        continue;
+      }
+      seenUrls.add(options.baseUrl);
+
       const { server, status } = await this.serverFactory.create(
         this.settings,
         options,

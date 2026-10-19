@@ -734,9 +734,6 @@ describe("loadWithFeedback model failure", () => {
 
     // load() succeeded, so no error notification — the redundant status
     // check was removed to avoid false failures after a successful load.
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Model model-c ready",
-      "info",
-    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Model model-c ready", "info");
   });
 });
