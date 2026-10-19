@@ -1,6 +1,6 @@
 {
   "name": "pi-llama-cpp",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Pi extension for llama.cpp integration. Supports multiple router/single/legacy/llama-swap servers.",
   "keywords": [
     "pi",
