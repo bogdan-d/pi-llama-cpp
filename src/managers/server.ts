@@ -98,21 +98,17 @@ export class ServerManager {
       fresh.push(server);
     }
 
-    // Unregister providers that disappeared (removed or edited away);
-    // `seen` tracks all kept providerIds, so we skip those still present.
-    for (const old of this.servers) {
-      if (seen.has(old.providerId)) continue;
-      pi.unregisterProvider(old.providerId);
-      // Optional chain is intentional despite the non-optional type: `sse`
-      // is undefined until initialize() runs (async-constructor hack — see Server)
-      old.sseManager?.disconnect();
-    }
+    // Snapshot the old list before replacing it — the unregister loop
+    // below iterates `this.servers` (a getter over serverList), so we
+    // need the pre-replacement values.
+    const oldServers = [...this.servers];
 
     // Replace in place so the live `servers` view stays valid
     this.serverList.length = 0;
     this.serverList.push(...fresh);
 
-    // Initialization and registration
+    // Initialization and registration — run first so a failure leaves old
+    // providers intact (they are still registered below).
     for (const server of fresh) {
       try {
         await server.initialize();
@@ -122,6 +118,16 @@ export class ServerManager {
         const idx = this.serverList.indexOf(server);
         if (idx !== -1) this.serverList.splice(idx, 1);
       }
+    }
+
+    // Unregister providers that disappeared (removed or edited away);
+    // `seen` tracks all kept providerIds, so we skip those still present.
+    for (const old of oldServers) {
+      if (seen.has(old.providerId)) continue;
+      pi.unregisterProvider(old.providerId);
+      // Optional chain is intentional despite the non-optional type: `sse`
+      // is undefined until initialize() runs (async-constructor hack — see Server)
+      old.sseManager?.disconnect();
     }
   }
 

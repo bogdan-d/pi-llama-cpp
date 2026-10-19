@@ -176,8 +176,6 @@ export class EventManager {
     const loadPromise = (async () => {
       await model.load();
 
-      if ((await model.getStatus()) === Status.FAILED)
-        throw new Error(`Failed to load model ${model.name}`);
       ctx.ui.notify(`Model ${model.name} ready`, "info");
 
       // Switch the loaded model in Pi's registry

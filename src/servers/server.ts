@@ -302,17 +302,17 @@ export abstract class Server {
 
     let current: Status;
     do {
-      if (this.now() - startTime > timeout) {
-        throw new Error(
-          `Model ${expected} timed out after ${timeout} ms: ${modelId}`,
-        );
-      }
-
       await new Promise((r) => setTimeout(r, interval));
       current = await this.getModelStatus(modelId);
 
       if (expected === Status.LOADED && current === Status.UNLOADED) {
         throw new Error(`Model loading failed: ${modelId}`);
+      }
+
+      if (this.now() - startTime > timeout) {
+        throw new Error(
+          `Model ${expected} timed out after ${timeout} ms: ${modelId}`,
+        );
       }
     } while (current !== expected);
   }

@@ -709,7 +709,7 @@ describe("loadWithFeedback SSE progress with stage", () => {
 });
 
 describe("loadWithFeedback model failure", () => {
-  it("should notify with error when model load results in FAILED status", async () => {
+  it("should not show error when load() succeeds even if status is FAILED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
     vi.mocked(settingsStub.resolveEnableSSE).mockResolvedValue(false);
 
@@ -732,9 +732,11 @@ describe("loadWithFeedback model failure", () => {
       mockPi,
     );
 
+    // load() succeeded, so no error notification — the redundant status
+    // check was removed to avoid false failures after a successful load.
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Failed to load model model-c",
-      "error",
+      "Model model-c ready",
+      "info",
     );
   });
 });
