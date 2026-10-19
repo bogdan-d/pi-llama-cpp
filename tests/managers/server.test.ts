@@ -327,7 +327,7 @@ describe("ServerManager", () => {
         "llama-server=http://127.0.0.1:8081",
         expect.objectContaining({ baseUrl: "http://127.0.0.1:8081/v1" }),
       );
-      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getFailedUrls()).toContain("http://127.0.0.1:9931");
       expect(manager.getWarnings()).toHaveLength(1);
 
       // Phase 2: /models without timeout → both register
@@ -378,7 +378,7 @@ describe("ServerManager", () => {
         "llama-server=http://127.0.0.1:8081",
         expect.objectContaining({ baseUrl: "http://127.0.0.1:8081/v1" }),
       );
-      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getFailedUrls()).toContain("http://127.0.0.1:9931");
       expect(manager.getWarnings()).toHaveLength(1);
 
       // Phase 2: /models without timeout → both register
@@ -417,7 +417,7 @@ describe("ServerManager", () => {
       await manager.update(mockPi);
 
       expect(mockPi.registerProvider).not.toHaveBeenCalled();
-      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getFailedUrls()).toContain("http://127.0.0.1:9931");
     });
 
     it("should remove a server from the list when registerProvider throws", async () => {
@@ -442,7 +442,7 @@ describe("ServerManager", () => {
       await manager.update(mockPi);
 
       expect(manager.servers).toHaveLength(0);
-      expect(manager.failedUrls).toContain("http://127.0.0.1:9931");
+      expect(manager.getFailedUrls()).toContain("http://127.0.0.1:9931");
     });
   });
 
@@ -460,7 +460,7 @@ describe("ServerManager", () => {
 
       await manager.update(mockPi);
 
-      expect(manager.failedUrls).not.toContain("http://127.0.0.1:9931");
+      expect(manager.getFailedUrls()).not.toContain("http://127.0.0.1:9931");
       const warnings = manager.getWarnings();
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain("http://127.0.0.1:9931");

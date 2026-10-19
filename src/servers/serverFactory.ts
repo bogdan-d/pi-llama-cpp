@@ -67,7 +67,7 @@ export class ServerFactory {
     const [health, auth, props] = await Promise.allSettled([
       apiClient.probeStatus("/health", timeout),
       apiClient.get<ModelsEndpoint>("/v1/models", timeout),
-      apiClient.get<PropsEndpoint>("/props?autoload=false"),
+      apiClient.get<PropsEndpoint>("/props?autoload=false", timeout),
     ]);
 
     // Health probe

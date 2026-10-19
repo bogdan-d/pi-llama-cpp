@@ -24,7 +24,7 @@ export class ServerManager {
     private readonly settings: SettingsService,
     private readonly serverFactory: ServerFactory,
   ) {}
-  readonly failedUrls: string[] = [];
+  private readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
   private readonly serverList: Server[] = [];
 
@@ -156,6 +156,13 @@ export class ServerManager {
     this.warnings.length = 0;
 
     return warnings;
+  }
+
+  /**
+   * Returns URLs of servers that failed to initialize.
+   */
+  getFailedUrls(): readonly string[] {
+    return [...this.failedUrls];
   }
 
   /**

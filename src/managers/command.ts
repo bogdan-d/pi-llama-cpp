@@ -106,7 +106,7 @@ export class CommandManager {
     await this.serverManager.update(pi);
 
     // Notify about unreachable servers
-    for (const url of this.serverManager.failedUrls) {
+    for (const url of this.serverManager.getFailedUrls()) {
       this.notifyNotFound(ctx, url);
     }
 
