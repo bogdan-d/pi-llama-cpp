@@ -73,6 +73,33 @@ export class EventManager {
   }
 
   /**
+   * Unloads a model: shows status notifications and re-scans providers.
+   *
+   * Fire-and-forget — the caller does not need to await this method.
+   *
+   * @param model The model to unload
+   * @param ctx Pi context
+   * @param pi Pi extension API (for provider re-scan)
+   */
+  async unloadModel(
+    model: Model,
+    ctx: ExtensionContext,
+    pi: ExtensionAPI,
+  ): Promise<void> {
+    ctx.ui.notify(`Unloading ${model.name}...`, "info");
+
+    try {
+      await model.unload();
+      ctx.ui.notify(`Unloaded ${model.name}`, "info");
+    } catch (err) {
+      ctx.ui.notify(errorMessage(err), "error");
+    } finally {
+      // Re-scan providers so the model registry reflects the new state
+      await this.serverManager.update(pi);
+    }
+  }
+
+  /**
    * Session-switch handler. Registered once at extension init.
    * Only notifies if a model load is actually in-flight.
    *

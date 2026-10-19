@@ -30,6 +30,7 @@ const createServer = (overrides = {}) => {
   );
   // Create an SSEManager so `server.sse` is available for tests that need it
   server.sse = new SSEManager(server, server.resolver, undefined, mockFetch);
+  server.sse.probeSSE = vi.fn(async () => true);
   return Object.assign(server, overrides);
 };
 

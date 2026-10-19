@@ -737,3 +737,35 @@ describe("loadWithFeedback model failure", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith("Model model-c ready", "info");
   });
 });
+
+describe("EventManager.unloadModel", () => {
+  it("should notify on unload success and re-scan providers", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        unload: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.unloadModel(server.models[0], ctx, mockPi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloading model-a...", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloaded model-a", "info");
+  });
+
+  it("should notify on error and still re-scan providers", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        unload: vi.fn().mockRejectedValue(new Error("unload failed")),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.unloadModel(server.models[0], ctx, mockPi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloading model-a...", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("unload failed", "error");
+  });
+});

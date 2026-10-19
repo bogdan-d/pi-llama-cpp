@@ -53,7 +53,7 @@ export class RouterServer extends Server {
 
     // SSE or polling fallback
     const sse = this.sseManager;
-    if (sse) {
+    if (sse && (await sse.probeSSE())) {
       try {
         const { status: sseStatus, exit_code } =
           await sse.subscribeToStatus(modelId);
@@ -104,10 +104,13 @@ export class RouterServer extends Server {
 
     // Pre-subscribe before the POST so the terminal event can't be missed.
     const sse = this.sseManager;
-    const sseWait = sse ? sse.subscribeToStatus(modelId) : null;
-    // If the subscription is abandoned (e.g. the POST fails), swallow its
-    // eventual rejection so it can't surface as unhandled.
-    sseWait?.catch(() => {});
+    let sseWait: Promise<{ status: string; exit_code?: number }> | null = null;
+    if (sse && (await sse.probeSSE())) {
+      sseWait = sse.subscribeToStatus(modelId);
+      // If the subscription is abandoned (e.g. the POST fails), swallow its
+      // eventual rejection so it can't surface as unhandled.
+      sseWait.catch(() => {});
+    }
 
     try {
       await this.postRequest("unload", modelId);

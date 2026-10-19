@@ -54,9 +54,7 @@ export class ModelsMenu {
 
     // Action: Unload
     if (action === Action.UNLOAD) {
-      ctx.ui.notify(`Unloading ${model.name}...`, "info");
-      await model.unload();
-      ctx.ui.notify(`Unloaded ${model.name}`, "info");
+      this.eventManager.unloadModel(model, ctx, pi);
       return;
     }
 
