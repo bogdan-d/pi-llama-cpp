@@ -90,7 +90,7 @@ export class SSEManager {
     // Create SSE client if not already created
     this.sseClient ??= new SSEClient(
       this.sseEndpoint,
-      this.server.apiKey,
+      () => this.server.apiKey,
       this.fetchFn,
     );
 
