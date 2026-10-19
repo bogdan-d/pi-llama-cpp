@@ -2,8 +2,9 @@ import type {
   ExtensionAPI,
   ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
-import { API_TYPE } from "../constants";
+import { ENDPOINT_PREFIX, API_TYPE, PROVIDER_NAME } from "../constants";
 import { ServerStatus } from "../enums/serverStatus";
+import type { ServerOptions } from "../interfaces/server";
 import type { SortBy } from "../interfaces/sortBy";
 import { Model } from "../models/model";
 import {
@@ -94,9 +95,13 @@ export class ServerManager {
           this.failedUrls.push(baseUrl);
           this.warnings.push(unreachableMessage(baseUrl));
         } else if (status === ServerStatus.UNAUTHORIZED) {
+          // Register a provider with no models, so that it appears in `/login`.
+          const providerId = ServerIds.resolve(baseUrl, options.customId);
+          this.registerEmptyProvider(baseUrl, options, pi);
+
           // We don't add to failedUrls here because the server is healthy.
           // We're just unauthorized to use it.
-          const providerId = ServerIds.resolve(baseUrl, options.customId);
+          seen.add(providerId);
           this.warnings.push(authRequiredMessage(baseUrl, providerId));
         }
         continue;
@@ -141,24 +146,47 @@ export class ServerManager {
   }
 
   /**
-   * Initializes the server and creates a Pi provider.
-   * Handles auth errors by registering with an empty model list so the user
-   * can still configure the API key via `/login` or `auth.json`.
+   * Registers an empty provider for an unauthorized server so the user
+   * can authenticate via `/login`. The next scan will pick up models
+   * once the key is set.
+   *
+   * @param baseUrl The server base URL
+   * @param options Server configuration (customId, customName)
+   * @param pi The Pi extension API
+   */
+  private registerEmptyProvider(
+    baseUrl: string,
+    options: ServerOptions,
+    pi: ExtensionAPI,
+  ): void {
+    const providerId = ServerIds.resolve(baseUrl, options.customId);
+
+    pi.registerProvider(providerId, {
+      name: options.customName
+        ? `${PROVIDER_NAME} (${options.customName})`
+        : `${PROVIDER_NAME} (${baseUrl})`,
+      baseUrl: `${baseUrl}${ENDPOINT_PREFIX}`,
+      api: API_TYPE,
+      apiKey: this.settings.resolveApiKey(providerId),
+      models: [],
+    });
+  }
+
+  /**
+   * Initializes the server and registers the corresponding Pi provider.
    *
    * @param server The server
    * @param pi The Pi API
    */
   private async registerProvider(server: Server, pi: ExtensionAPI) {
-    const { apiBaseUrl, apiKey, models, providerId, providerName } = server;
     const modelConfigs: ProviderModelConfig[] = await Promise.all(
-      models.map((m) => m.toProviderConfig()),
+      server.models.map((m) => m.toProviderConfig()),
     );
-
-    pi.registerProvider(providerId, {
-      name: providerName,
-      baseUrl: apiBaseUrl,
+    pi.registerProvider(server.providerId, {
+      name: server.providerName,
+      baseUrl: server.apiBaseUrl,
       api: API_TYPE,
-      apiKey,
+      apiKey: server.apiKey,
       models: modelConfigs,
     });
   }

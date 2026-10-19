@@ -447,7 +447,7 @@ describe("ServerManager", () => {
   });
 
   describe("UNAUTHORIZED status", () => {
-    it("should add a warning but not failedUrls for UNAUTHORIZED servers", async () => {
+    it("should register an empty-provider and add a warning", async () => {
       const manager = new ServerManager(settingsStub, {
         create: async () => ({
           server: null,
@@ -461,9 +461,42 @@ describe("ServerManager", () => {
       await manager.update(mockPi);
 
       expect(manager.getFailedUrls()).not.toContain("http://127.0.0.1:9931");
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "llama-server=http://127.0.0.1:9931",
+        expect.objectContaining({
+          baseUrl: "http://127.0.0.1:9931/v1",
+          models: [],
+        }),
+      );
       const warnings = manager.getWarnings();
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain("http://127.0.0.1:9931");
+    });
+
+    it("should use customId when set", async () => {
+      const manager = new ServerManager(settingsStub, {
+        create: async () => ({
+          server: null,
+          status: ServerStatus.UNAUTHORIZED,
+        }),
+      });
+      vi.mocked(settingsStub.resolveServerConfigs).mockResolvedValue([
+        configOf("http://127.0.0.1:9931", {
+          customId: "my-server",
+          customName: "Test",
+        }),
+      ]);
+
+      await manager.update(mockPi);
+
+      expect(mockPi.registerProvider).toHaveBeenCalledWith(
+        "my-server",
+        expect.objectContaining({
+          name: "Llama.cpp (Test)",
+          baseUrl: "http://127.0.0.1:9931/v1",
+          models: [],
+        }),
+      );
     });
   });
 
