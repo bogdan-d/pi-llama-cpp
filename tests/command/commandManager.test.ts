@@ -1,8 +1,9 @@
-import type { Theme } from "@earendil-works/pi-coding-agent";
 import { initTheme } from "@earendil-works/pi-coding-agent";
-import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { KeybindingsManager, TUI } from "@earendil-works/pi-tui";
+import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Action } from "../../src/enums/action";
+import { ServerStatus } from "../../src/enums/serverStatus";
 import { CommandManager } from "../../src/managers/command";
 import { EventManager } from "../../src/managers/events";
 import { ServerManager } from "../../src/managers/server";
@@ -10,16 +11,23 @@ import type { SettingsService } from "../../src/settings/settings";
 import { SETTINGS_ITEMS } from "../../src/settings/defaults";
 import { formatMs } from "../../src/settings/options";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
+import { OverrideSettingsList } from "../../src/ui/editors/override/overrideList";
 import { ServerDisplay } from "../../src/ui/editors/server/utils";
 import {
   createMockCtx,
-  createMockModel,
+  createMockCommandCtx,
   createMockPi,
-  createMockServer,
-  makeSettingsStub,
-  mockRpc,
-  stubInitialize,
-} from "../mocks";
+} from "../mocks/context";
+import { createMockModel } from "../mocks/model";
+import { createMockTui } from "../mocks/tui";
+import { createMockServer } from "../mocks/server";
+import { mockResolver, mockServerOptions } from "../mocks/server";
+import { createServerFactory } from "../mocks/serverFactory";
+import { makeSettingsStub } from "../mocks/settings";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
 
 beforeEach(() => {
   initTheme();
@@ -41,23 +49,6 @@ const createMockEventManager = (
   settingsStub: SettingsService,
 ) => new EventManager(serverManager, settingsStub);
 
-/**
- * Waits for a ServerSettingsList to finish its async initialization
- * (health checks + SettingsList construction).
- */
-const waitForEditor = (editor: ServerSettingsList): Promise<void> =>
-  new Promise((resolve) => {
-    const check = () => {
-      // @ts-expect-error settingsList is private
-      if (editor.settingsList) {
-        resolve();
-      } else {
-        setTimeout(check, 10);
-      }
-    };
-    check();
-  });
-
 describe("CommandManager", () => {
   let serverManager: ServerManager;
   let commandManager: CommandManager;
@@ -68,7 +59,7 @@ describe("CommandManager", () => {
   beforeEach(() => {
     mockPi = createMockPi();
     settingsStub = makeSettingsStub();
-    serverManager = new ServerManager(settingsStub);
+    serverManager = new ServerManager(settingsStub, createServerFactory());
     eventManager = createMockEventManager(serverManager, settingsStub);
     commandManager = new CommandManager(
       serverManager,
@@ -112,14 +103,23 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:9931",
+        options: { baseUrl: "http://127.0.0.1:9931" },
         models: [model1, model2],
       });
       const unloadSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
-      stubInitialize((s) => s.models.push(...server.models));
-      serverManager = new ServerManager(unloadSettings);
+      serverManager = new ServerManager(unloadSettings, {
+        create: async () => {
+          const mockServer = createMockServer({
+            resolver: mockResolver,
+            options: mockServerOptions,
+            models: [...server.models],
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
+      });
       const unloadEventManager = createMockEventManager(
         serverManager,
         unloadSettings,
@@ -130,14 +130,9 @@ describe("CommandManager", () => {
         unloadEventManager,
       );
 
-      const ctx = {
-        ui: {
-          notify: vi.fn(),
-          theme: { fg: (_: string, text: string) => text },
-        },
-      } as any;
+      const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("unload", ctx, mockPi as any);
+      await commandManager.handleCommand("unload", ctx, mockPi);
 
       expect(model1.unload).toHaveBeenCalled();
       expect(model2.unload).toHaveBeenCalled();
@@ -151,14 +146,23 @@ describe("CommandManager", () => {
       const model1 = createMockModel("model-1");
       const model2 = createMockModel("model-2");
       const server = createMockServer({
-        baseUrl: "http://127.0.0.1:9931",
+        options: { baseUrl: "http://127.0.0.1:9931" },
         models: [model1, model2],
       });
       const infoSettings = makeSettingsStub({
         resolveServerConfigs: vi.fn(async () => [{ baseUrl: server.baseUrl }]),
       });
-      stubInitialize((s) => s.models.push(...server.models));
-      serverManager = new ServerManager(infoSettings);
+      serverManager = new ServerManager(infoSettings, {
+        create: async () => {
+          const mockServer = createMockServer({
+            resolver: mockResolver,
+            options: mockServerOptions,
+            models: [...server.models],
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
+      });
       const infoEventManager = createMockEventManager(
         serverManager,
         infoSettings,
@@ -169,14 +173,9 @@ describe("CommandManager", () => {
         infoEventManager,
       );
 
-      const ctx = {
-        ui: {
-          notify: vi.fn(),
-          theme: { fg: (_: string, text: string) => text },
-        },
-      } as any;
+      const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("info", ctx, mockPi as any);
+      await commandManager.handleCommand("info", ctx, mockPi);
 
       expect(model1.getInfo).toHaveBeenCalled();
       expect(model2.getInfo).toHaveBeenCalled();
@@ -303,7 +302,7 @@ describe("CommandManager", () => {
         .mockResolvedValue(undefined);
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("settings", ctx as any, mockPi as any);
+      await commandManager.handleCommand("settings", ctx, mockPi);
 
       expect(updateSpy).not.toHaveBeenCalled();
       expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -311,9 +310,9 @@ describe("CommandManager", () => {
     });
 
     it("should notify instead of opening the menu outside the TUI", async () => {
-      const ctx = { ...createMockCtx(() => null), mode: "rpc" } as any;
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
 
-      await commandManager.handleCommand("settings", ctx, mockPi as any);
+      await commandManager.handleCommand("settings", ctx, mockPi);
 
       expect(ctx.ui.custom).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -336,13 +335,13 @@ describe("CommandManager", () => {
             (data === "\x1b[A" && name === "tui.select.up") ||
             (data === "\x1b[B" && name === "tui.select.down"),
         ),
-      }) as unknown as KeybindingsManager;
+      }) as Partial<KeybindingsManager> as KeybindingsManager;
 
     const createMockTheme = (): Theme =>
       ({
         fg: (_color: string, text: string) => text,
         bold: (text: string) => text,
-      }) as unknown as Theme;
+      }) as Partial<Theme> as Theme;
 
     it("should re-register providers after the editor closes", async () => {
       const updateSpy = vi
@@ -350,7 +349,7 @@ describe("CommandManager", () => {
         .mockResolvedValue(undefined);
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
       expect(updateSpy).toHaveBeenCalledTimes(1);
@@ -362,9 +361,9 @@ describe("CommandManager", () => {
     });
 
     it("should notify instead of opening the editor outside the TUI", async () => {
-      const ctx = { ...createMockCtx(() => null), mode: "rpc" } as any;
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
 
-      await commandManager.handleCommand("servers", ctx, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       expect(ctx.ui.custom).not.toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -388,7 +387,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       // Invoke the factory captured from ctx.ui.custom
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
@@ -399,7 +398,7 @@ describe("CommandManager", () => {
       ) => ServerSettingsList;
       const done = vi.fn();
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         {
           matches: vi.fn(
@@ -407,13 +406,13 @@ describe("CommandManager", () => {
               (data === ENTER && name === "tui.select.confirm") ||
               (data === ESC && name === "tui.select.cancel"),
           ),
-        } as unknown as KeybindingsManager,
+        } as Partial<KeybindingsManager> as KeybindingsManager,
         done,
       );
 
       expect(editor).toBeInstanceOf(ServerSettingsList);
       // Wait for async health checks to complete
-      await waitForEditor(editor);
+      await editor.ready;
       // Seeded with the merged snapshot
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
 
@@ -427,8 +426,9 @@ describe("CommandManager", () => {
       editor.handleInput(ENTER); // skip optional ID
       expect(editor.render(80).join("\n")).toContain("Add server · 3/3");
       editor.handleInput(ENTER); // skip optional name → persist
-      // Wait for async persist and rebuild
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Wait for async persist and rebuild (fake timers flush deterministically)
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(0);
       expect(editorSettings.setLlamaSettings).toHaveBeenCalledWith({
         servers: [{ url: "http://seed:1" }, { url: "http://new:2" }],
       });
@@ -436,6 +436,7 @@ describe("CommandManager", () => {
       // Esc closes the editor
       editor.handleInput(ESC);
       expect(done).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
 
     it("should persist nothing when the add wizard is cancelled", async () => {
@@ -453,7 +454,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
         tui: TUI,
@@ -462,7 +463,7 @@ describe("CommandManager", () => {
         done: (result: undefined) => void,
       ) => ServerSettingsList;
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         createMockKeybindings(),
         vi.fn(),
@@ -473,11 +474,13 @@ describe("CommandManager", () => {
       for (const ch of "http://new:2") editor.handleInput(ch);
       editor.handleInput(ENTER);
       editor.handleInput(ESC);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      vi.useFakeTimers();
+      await vi.advanceTimersByTimeAsync(0);
 
       expect(editorSettings.setLlamaSettings).not.toHaveBeenCalled();
       // Back to the list view
       expect(editor.render(80).join("\n")).toContain("http://seed:1");
+      vi.useRealTimers();
     });
 
     it("should delete the selected server after confirming", async () => {
@@ -498,7 +501,7 @@ describe("CommandManager", () => {
       );
       const ctx = createMockCtx(() => null);
 
-      await commandManager.handleCommand("servers", ctx as any, mockPi as any);
+      await commandManager.handleCommand("servers", ctx, mockPi);
 
       const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
         tui: TUI,
@@ -507,14 +510,14 @@ describe("CommandManager", () => {
         done: (result: undefined) => void,
       ) => ServerSettingsList;
       const editor = factory(
-        { requestRender: vi.fn() } as unknown as TUI,
+        createMockTui(),
         createMockTheme(),
         createMockKeybindings(),
         vi.fn(),
       );
 
       // Wait for async health checks to complete
-      await waitForEditor(editor);
+      await editor.ready;
 
       // Move to the second row and open the confirm dialog
       editor.handleInput("\x1b[B");
@@ -538,6 +541,91 @@ describe("CommandManager", () => {
     });
   });
 
+  describe("/models overrides editor", () => {
+    const ESC = "\x1b";
+    const ENTER = "\r";
+
+    const createMockKeybindings = (): KeybindingsManager =>
+      ({
+        matches: vi.fn(
+          (data: string, name: string) =>
+            (data === ENTER && name === "tui.select.confirm") ||
+            (data === ESC && name === "tui.select.cancel") ||
+            (data === "\x1b[A" && name === "tui.select.up") ||
+            (data === "\x1b[B" && name === "tui.select.down"),
+        ),
+      }) as Partial<KeybindingsManager> as KeybindingsManager;
+
+    const createMockTheme = (): Theme =>
+      ({
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      }) as Partial<Theme> as Theme;
+
+    it("should re-register providers after the editor closes", async () => {
+      const updateSpy = vi
+        .spyOn(serverManager, "update")
+        .mockResolvedValue(undefined);
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("should notify instead of opening the editor outside the TUI", async () => {
+      const ctx = createMockCommandCtx(() => null, { mode: "rpc" });
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      expect(ctx.ui.custom).not.toHaveBeenCalled();
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "/models overrides requires an interactive session (TUI)",
+        "warning",
+      );
+    });
+
+    it("should open the overrides list seeded with server overrides", async () => {
+      const editorSettings = makeSettingsStub({
+        getLlamaServers: vi.fn(async () => [
+          {
+            url: "http://seed:1",
+            overrides: { "model-a": { cost: { input: 0.1 } } },
+          },
+        ]),
+      });
+      const overridesEventManager = createMockEventManager(
+        serverManager,
+        editorSettings,
+      );
+      commandManager = new CommandManager(
+        serverManager,
+        editorSettings,
+        overridesEventManager,
+      );
+      const ctx = createMockCtx(() => null);
+
+      await commandManager.handleCommand("overrides", ctx, mockPi);
+
+      const factory = vi.mocked(ctx.ui.custom).mock.calls[0][0] as (
+        tui: TUI,
+        theme: Theme,
+        kb: KeybindingsManager,
+        done: (result: undefined) => void,
+      ) => OverrideSettingsList;
+      const done = vi.fn();
+      const editor = factory(
+        createMockTui(),
+        createMockTheme(),
+        createMockKeybindings(),
+        done,
+      );
+
+      expect(editor.render(80).join("\n")).toContain("1 entries");
+    });
+  });
+
   describe("/models interactive menu", () => {
     /**
      * Helper to create a CommandManager with mock servers and models.
@@ -552,14 +640,18 @@ describe("CommandManager", () => {
         ),
       });
       // Servers are built fresh by each scan; seed the mock models into
-      // them (keyed by baseUrl) via the initialize stub.
+      // them (keyed by baseUrl) via the server factory.
       const seededModels = [...models];
-      stubInitialize((server) =>
-        server.models.push(
-          ...seededModels.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: seededModels.filter((m) => m.serverUrl === options.baseUrl),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
+      });
       const factoryEventManager = createMockEventManager(
         serverManager,
         settingsStub,
@@ -583,7 +675,7 @@ describe("CommandManager", () => {
       const ctx = createMockCtx(() => null);
       (ctx.ui.custom as any).mockResolvedValue(null);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(ctx.ui.notify).not.toHaveBeenCalled();
     });
@@ -598,7 +690,7 @@ describe("CommandManager", () => {
       });
       (ctx.ui.custom as any).mockResolvedValue(model);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(ctx.ui.notify).toHaveBeenCalledWith(
         "Model: model-a\nID: model-a",
@@ -616,7 +708,7 @@ describe("CommandManager", () => {
       });
       (ctx.ui.custom as any).mockResolvedValue(model);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(model.unload).toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith("Unloaded model-a", "info");
@@ -632,7 +724,7 @@ describe("CommandManager", () => {
       });
       (ctx.ui.custom as any).mockResolvedValue(model);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(mockPi.setModel).toHaveBeenCalled();
       expect(ctx.ui.notify).toHaveBeenCalledWith("Model model-a ready", "info");
@@ -651,7 +743,7 @@ describe("CommandManager", () => {
         return null as T;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect((ctx.ui.custom as any)).toHaveBeenCalledTimes(2);
       expect(ctx.ui.notify).not.toHaveBeenCalled();
@@ -668,7 +760,7 @@ describe("CommandManager", () => {
         menus.push(list.render(120).join("\n"));
         return null;
       });
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       // First scan: only model-a is offered
       expect(menus[0]).toContain("model-a");
@@ -685,7 +777,7 @@ describe("CommandManager", () => {
         { baseUrl: "http://127.0.0.1:8081" },
       ]);
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(menus[1]).toContain("model-a");
       expect(menus[1]).toContain("model-b");
@@ -700,12 +792,16 @@ describe("CommandManager", () => {
         ),
         resolveShowServerUrls: vi.fn(async () => false),
       });
-      stubInitialize((server) =>
-        server.models.push(
-          ...models.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: models.filter((m) => m.serverUrl === options.baseUrl),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
+      });
       const urlEventManager = createMockEventManager(
         serverManager,
         settingsStub,
@@ -723,7 +819,7 @@ describe("CommandManager", () => {
         return null;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(menu).toContain("model-a");
       expect(menu).not.toContain("[Server:");
@@ -738,12 +834,16 @@ describe("CommandManager", () => {
         ),
         resolveShowServerUrls: vi.fn(async () => true),
       });
-      stubInitialize((server) =>
-        server.models.push(
-          ...models.filter((m) => m.serverUrl === server.baseUrl),
-        ),
-      );
-      const serverManager = new ServerManager(settingsStub);
+      const serverManager = new ServerManager(settingsStub, {
+        create: async (_resolver, options) => {
+          const mockServer = createMockServer({
+            options: { baseUrl: options.baseUrl },
+            models: models.filter((m) => m.serverUrl === options.baseUrl),
+          });
+          mockServer.status = ServerStatus.READY;
+          return { server: mockServer, status: ServerStatus.READY };
+        },
+      });
       const showUrlEventManager = createMockEventManager(
         serverManager,
         settingsStub,
@@ -761,7 +861,7 @@ describe("CommandManager", () => {
         return null;
       });
 
-      await commandManager.handleCommand("", ctx as any, mockPi as any);
+      await commandManager.handleCommand("", ctx, mockPi);
 
       expect(menu).toContain("[Server: http://127.0.0.1:9931]");
     });

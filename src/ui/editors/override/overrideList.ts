@@ -1,15 +1,15 @@
+import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import type {
+import {
   Component,
   Focusable,
-  SettingItem,
   SettingsList,
+  type SettingItem,
 } from "@earendil-works/pi-tui";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { SettingsService } from "../../../settings/settings";
 import { HINTS } from "../../strings";
 import type { OverrideSettingsListOptions } from "../editorOptions";
-import { SettingsListFactory } from "../settingsListFactory";
 import { OverrideEntryListEditor } from "./entryEditor";
 
 /**
@@ -17,6 +17,8 @@ import { OverrideEntryListEditor } from "./entryEditor";
  * override entries.
  *
  * Unlike `ServerSettingsList`, this has no add/delete — just drill-down.
+ * There is deliberately no `r` reset here either: reset lives inside an
+ * entry's field submenu (`OverrideEntryListEditor`).
  *
  * Within a server's entry list: Enter drills into the field-edit submenu;
  * a adds, d deletes (after confirmation). Fields use a mix of finite
@@ -104,7 +106,7 @@ export class OverrideSettingsList implements Component, Focusable {
           new OverrideEntryListEditor(this.options, i, () => {
             // Entry count may have changed (add/delete/pattern rename)
             const current = this.options.servers[i];
-            serverList?.updateValue(
+            this.settingsList?.updateValue(
               `server-${i}`,
               OverrideSettingsList.entriesLabel(current),
             );
@@ -113,11 +115,13 @@ export class OverrideSettingsList implements Component, Focusable {
       }),
     );
 
-    let serverList: SettingsList | null = null;
-    serverList = SettingsListFactory.create(serverItems, () => {
-      this.options.done();
-    });
-    return serverList;
+    return new SettingsList(
+      serverItems,
+      Math.min(serverItems.length + 2, 15),
+      getSettingsListTheme(),
+      () => {}, // no per-item change handler
+      () => this.options.done(),
+    );
   }
 
   /** Row summary for a server in the list: its override entry count. */

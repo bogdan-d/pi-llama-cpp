@@ -1,19 +1,16 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-completions";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { ModelOverride } from "../src/interfaces/settings";
 import { EventManager } from "../src/managers/events";
 import { ServerManager } from "../src/managers/server";
 import { StatsManager } from "../src/managers/stats";
-import {
-  createMockModel,
-  createMockPi,
-  createMockPiContext,
-  createMockServer,
-  makeSettingsStub,
-} from "./mocks";
+import { createMockModel } from "./mocks/model";
+import { createMockPi, createMockPiContext } from "./mocks/context";
+import { createMockServer } from "./mocks/server";
+import { createServerFactory } from "./mocks/serverFactory";
+import { makeSettingsStub } from "./mocks/settings";
 
 // Use Pi's real serializer, but stop at onPayload before any network request.
 async function captureRequest(
@@ -23,10 +20,10 @@ async function captureRequest(
 ) {
   const server = createMockServer({
     models: [createMockModel("model-a")],
-    overrides: { "model-": override },
+    options: { overrides: { "model-": override } },
   });
   const settings = makeSettingsStub();
-  const servers = new ServerManager(settings);
+  const servers = new ServerManager(settings, createServerFactory());
   vi.spyOn(servers, "servers", "get").mockReturnValue([server]);
   const events = new EventManager(servers, settings);
   const stats = new StatsManager(() => [server.baseUrl]);
@@ -55,7 +52,7 @@ async function captureRequest(
         const result = await events.onBeforeProviderRequest(
           { type: "before_provider_request", payload },
           ctx,
-          createMockPi() as unknown as ExtensionAPI,
+          createMockPi(),
         );
         const init = { body: JSON.stringify(result) };
         stats["requestProgress"](init);

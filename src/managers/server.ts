@@ -2,20 +2,28 @@ import type {
   ExtensionAPI,
   ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
-import { ApiError } from "../api/client";
-import { API_TYPE, PROVIDER_NAME } from "../constants";
+import { API_TYPE } from "../constants";
 import { ServerStatus } from "../enums/serverStatus";
 import type { SortBy } from "../interfaces/sortBy";
-import { BaseModel } from "../models/baseModel";
-import { Server } from "../server";
-import { authRequiredMessage, warnUser } from "../ui/strings";
+import { Model } from "../models/model";
+import {
+  authRequiredMessage,
+  timeoutMessage,
+  unreachableMessage,
+} from "../ui/strings";
+import { ServerFactory } from "../servers/serverFactory";
 import type { SettingsService } from "../settings/settings";
+import type { Server } from "../servers/server";
+import { ServerIds } from "../utils/serverIds";
 
 /** Model-list comparator: negative if a sorts first, positive if b does. */
-type ModelComparator = (a: BaseModel, b: BaseModel) => number;
+type ModelComparator = (a: Model, b: Model) => number;
 
 export class ServerManager {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly serverFactory: ServerFactory,
+  ) {}
   readonly failedUrls: string[] = [];
   private readonly warnings: string[] = [];
   private readonly serverList: Server[] = [];
@@ -60,14 +68,35 @@ export class ServerManager {
     const fresh: Server[] = [];
     const seen = new Set<string>(); // dedupe repeated URLs (same providerId)
     for (const options of await this.settings.resolveServerConfigs()) {
-      const server = new Server(this.settings, options);
+      const { server, status } = await this.serverFactory.create(
+        this.settings,
+        options,
+        timeout,
+      );
+
+      // Handle not-ready status
+      if (!server) {
+        const { baseUrl } = options;
+
+        if (status === ServerStatus.TIMEOUT) {
+          this.failedUrls.push(baseUrl);
+          this.warnings.push(timeoutMessage(baseUrl, timeout!));
+        } else if (status === ServerStatus.UNREACHABLE) {
+          this.failedUrls.push(baseUrl);
+          this.warnings.push(unreachableMessage(baseUrl));
+        } else if (status === ServerStatus.UNAUTHORIZED) {
+          // We don't add to failedUrls here because the server is healthy.
+          // We're just unauthorized to use it.
+          const providerId = ServerIds.resolve(baseUrl, options.customId);
+          this.warnings.push(authRequiredMessage(baseUrl, providerId));
+        }
+        continue;
+      }
+
       if (seen.has(server.providerId)) continue;
       seen.add(server.providerId);
       fresh.push(server);
     }
-
-    // Surface warnings from URL parsing (invalid entries, deprecations)
-    this.warnings.push(...this.settings.takeWarnings());
 
     // Unregister providers that disappeared (removed or edited away);
     // `seen` tracks all kept providerIds, so we skip those still present.
@@ -79,63 +108,21 @@ export class ServerManager {
       old.sseManager?.disconnect();
     }
 
-    // Replace in place so the live `servers` view stays valid (D1)
+    // Replace in place so the live `servers` view stays valid
     this.serverList.length = 0;
     this.serverList.push(...fresh);
 
-    const registrableServers = timeout
-      ? await this.findRegistrableServers(timeout)
-      : this.servers;
-
     // Initialization and registration
-    for (const server of registrableServers) {
-      await this.registerProvider(server, pi);
-    }
-  }
-
-  /**
-   * Runs concurrent health checks and returns servers that can be
-   * registered (healthy or unauthorized — the latter is handled by
-   * `registerProvider` with an empty model list).
-   *
-   * @param timeout Maximum time to wait for each server
-   * @returns Array of servers that passed the health check
-   */
-  private async findRegistrableServers(timeout: number): Promise<Server[]> {
-    const healthResults = await Promise.all(
-      this.servers.map(async (server) => {
-        const status = await server.isReady(timeout);
-        return { server, status };
-      }),
-    );
-
-    const response: Server[] = [];
-    for (const { server, status } of healthResults) {
-      if (
-        status === ServerStatus.READY ||
-        status === ServerStatus.UNAUTHORIZED
-      ) {
-        response.push(server);
-      } else if (status === ServerStatus.TIMEOUT) {
-        this.warnings.push(
-          warnUser(
-            `${PROVIDER_NAME} server initialization for '${server.baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
-            "Run `/models` to retry without timeout and see all models.",
-          ),
-        );
+    for (const server of fresh) {
+      try {
+        await server.initialize();
+        await this.registerProvider(server, pi);
+      } catch {
         this.failedUrls.push(server.baseUrl);
-      } else {
-        this.warnings.push(
-          warnUser(
-            `${PROVIDER_NAME} server at '${server.baseUrl}' is unreachable.`,
-            "Check the URL and try again. Run `/models` to retry.",
-          ),
-        );
-        this.failedUrls.push(server.baseUrl);
+        const idx = this.serverList.indexOf(server);
+        if (idx !== -1) this.serverList.splice(idx, 1);
       }
     }
-
-    return response;
   }
 
   /**
@@ -147,23 +134,10 @@ export class ServerManager {
    * @param pi The Pi API
    */
   private async registerProvider(server: Server, pi: ExtensionAPI) {
-    const { apiBaseUrl, apiKey, baseUrl, models, providerId, providerName } =
-      server;
-    let modelConfigs: ProviderModelConfig[] = [];
-
-    try {
-      await server.initialize();
-      modelConfigs = await Promise.all(models.map((m) => m.toProviderConfig()));
-    } catch (err) {
-      if (err instanceof ApiError && err.type === "authentication") {
-        // Don't add to `failedUrls` — the server IS reachable, auth just
-        // isn't configured yet, so the health indicator should stay green.
-        this.warnings.push(authRequiredMessage(baseUrl, providerId));
-      } else {
-        this.failedUrls.push(baseUrl);
-        return;
-      }
-    }
+    const { apiBaseUrl, apiKey, models, providerId, providerName } = server;
+    const modelConfigs: ProviderModelConfig[] = await Promise.all(
+      models.map((m) => m.toProviderConfig()),
+    );
 
     pi.registerProvider(providerId, {
       name: providerName,
@@ -191,7 +165,7 @@ export class ServerManager {
    * @returns The server containing the model, or `undefined` when no
    * current server matches (e.g. removed while a model was loading)
    */
-  getServer(model: BaseModel): Server | undefined {
+  getServer(model: Model): Server | undefined {
     return this.servers.find((s) => s.baseUrl === model.serverUrl);
   }
 
@@ -202,7 +176,7 @@ export class ServerManager {
    *
    * @returns Flat array of all models across all servers
    */
-  async getAllModels(): Promise<BaseModel[]> {
+  async getAllModels(): Promise<Model[]> {
     const sortBy = await this.settings.resolveSortBy();
 
     if (sortBy === "api") {
@@ -213,22 +187,22 @@ export class ServerManager {
     return this.servers.flatMap((s) => [...s.models].sort(sorter));
   }
 
-  private static sortByIdAsc(a: BaseModel, b: BaseModel): number {
+  private static sortByIdAsc(a: Model, b: Model): number {
     return a.id.localeCompare(b.id);
   }
 
-  private static sortByIdDesc(a: BaseModel, b: BaseModel): number {
+  private static sortByIdDesc(a: Model, b: Model): number {
     return b.id.localeCompare(a.id);
   }
 
   /** Name ascending, with ID as tiebreaker. */
-  private static sortByNameAsc(a: BaseModel, b: BaseModel): number {
+  private static sortByNameAsc(a: Model, b: Model): number {
     const cmp = a.name.localeCompare(b.name);
     return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
   }
 
   /** Name descending, with ID as tiebreaker. */
-  private static sortByNameDesc(a: BaseModel, b: BaseModel): number {
+  private static sortByNameDesc(a: Model, b: Model): number {
     const cmp = b.name.localeCompare(a.name);
     return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
   }

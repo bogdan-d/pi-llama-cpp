@@ -1,4 +1,4 @@
-import { Server } from "../../../server";
+import { Server } from "../../../servers/server";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import { ServerIds } from "../../../utils/serverIds";
@@ -43,7 +43,7 @@ export class ServerDisplay {
 /**
  * Emoji indicators for server health status.
  */
-const SERVER_STATUS_ICONS: Record<ServerStatus, string> = {
+export const SERVER_STATUS_ICONS: Record<ServerStatus, string> = {
   [ServerStatus.READY]: "🟢",
   [ServerStatus.TIMEOUT]: "🟡",
   [ServerStatus.UNREACHABLE]: "🔴",

@@ -1,6 +1,6 @@
 // layering trade-off: sse client depends on settings/items to get the shared
 // polling interval default — avoids duplicating the value across modules.
-import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
+import { PollingIntervalSettingsItem } from "../settings/items/pollingInterval";
 import { openSSEStream } from "./fetch";
 import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 
@@ -16,7 +16,7 @@ import type { SSECallback, SSECleanup, SSEEvent } from "./types";
 export class SSEClient {
   private abortController: AbortController | null = null;
   private disposed: boolean = false;
-  private subscribers: Map<string, SSECallback> = new Map();
+  subscribers: Map<string, SSECallback> = new Map();
   private connected: boolean = false;
   private reconnecting: boolean = false; // tracks if reconnect is in progress
   /**
@@ -29,10 +29,12 @@ export class SSEClient {
   /**
    * @param sseEndpoint - The full SSE endpoint URL (e.g., "http://127.0.0.1:9931/models/sse")
    * @param apiKey - Optional API key for authenticated servers
+   * @param fetchFn - Optional custom fetch implementation (for testing)
    */
   constructor(
     private readonly sseEndpoint: string,
     private readonly apiKey?: string,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {}
 
   /**
@@ -71,6 +73,7 @@ export class SSEClient {
           this.sseEndpoint,
           this.apiKey,
           abortController.signal,
+          this.fetchFn,
         );
       } catch {
         if (this.disposed || abortController.signal.aborted) return false;

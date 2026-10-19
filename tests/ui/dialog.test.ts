@@ -1,32 +1,33 @@
-import { initTheme, type Theme } from "@earendil-works/pi-coding-agent";
-import {
-  getKeybindings,
-  type KeybindingsManager,
-  type TUI,
-} from "@earendil-works/pi-tui";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { API_KEY_PLACEHOLDER } from "../../src/constants";
+import type { LlamaServer } from "../../src/interfaces/settings";
 import { ConfirmDialog } from "../../src/ui/dialog/confirm";
 import { InputDialog } from "../../src/ui/dialog/input";
 import { OverrideSettingsList } from "../../src/ui/editors/override/overrideList";
 import { ServerSettingsList } from "../../src/ui/editors/server/serverEditor";
+import { createMockKeybindings } from "../mocks/keybindings";
+import { createMockTui } from "../mocks/tui";
+import { createMockTheme } from "../mocks/theme";
+
+/**
+ * Lets fire-and-forget async callbacks (persist, done) settle under fake
+ * timers — deterministic, unlike a real `setTimeout(0)` sleep.
+ */
+const flush = () => vi.advanceTimersByTimeAsync(0);
 
 beforeEach(() => {
   initTheme();
+  vi.useFakeTimers();
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 const ESC = "\x1b";
 const ENTER = "\r";
-
-const createMockTheme = (): Theme =>
-  ({
-    fg: (_color: string, text: string) => text,
-    bold: (text: string) => text,
-  }) as unknown as Theme;
-
-const createMockTui = (): TUI => ({ requestRender: vi.fn() }) as unknown as TUI;
-
-const createKeybindings = (): KeybindingsManager => getKeybindings();
 
 describe("InputDialog", () => {
   const build = (
@@ -124,6 +125,44 @@ describe("ConfirmDialog", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("confirms when the user navigates to Cancel then selects it", () => {
+    const { dialog, onConfirm, onCancel } = build();
+    const DOWN = "\x1b[B";
+    dialog.handleInput(DOWN); // move to Cancel
+    dialog.handleInput(ENTER); // select Cancel
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("InputDialog error clearing", () => {
+  it("clears and re-shows the error when submitting invalid data twice", () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    const dialog = new InputDialog({
+      theme: createMockTheme(),
+      tui: createMockTui(),
+      title: "Dialog",
+      message: "Enter URL",
+      validate: (raw) => (raw.startsWith("http") ? raw : null),
+      onSubmit,
+      onCancel,
+    });
+
+    // First invalid submit
+    for (const ch of "bad") dialog.handleInput(ch);
+    dialog.handleInput(ENTER);
+    expect(dialog.render(60).join("\n")).toContain('Invalid value "bad"');
+
+    // Second invalid submit — should clear old error then show new one
+    const CLEAR = "\x15"; // tui.editor.deleteToLineStart
+    for (const ch of CLEAR) dialog.handleInput(ch);
+    for (const ch of "also-bad") dialog.handleInput(ch);
+    dialog.handleInput(ENTER);
+    expect(dialog.render(60).join("\n")).toContain('Invalid value "also-bad"');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
 
 describe("ServerSettingsList add wizard", () => {
@@ -134,12 +173,12 @@ describe("ServerSettingsList add wizard", () => {
     const editor = new ServerSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
-      servers: servers as never[],
+      keybindings: createMockKeybindings(),
+      servers: servers as LlamaServer[],
       persist,
       done,
       onError,
-      authResolver: () => Promise.resolve("sk-placeholder"),
+      authResolver: () => Promise.resolve(API_KEY_PLACEHOLDER),
     });
     return { editor, persist, done, onError };
   };
@@ -152,7 +191,7 @@ describe("ServerSettingsList add wizard", () => {
     editor.handleInput(ENTER); // URL → ID
     editor.handleInput(ENTER); // skip ID → name
     editor.handleInput(ENTER); // skip name → persist
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(persist).toHaveBeenCalledWith([{ url: "http://x:1" }]);
   });
@@ -166,7 +205,7 @@ describe("ServerSettingsList add wizard", () => {
     for (const ch of "my-id") editor.handleInput(ch);
     editor.handleInput(ENTER); // ID → name
     editor.handleInput(ENTER); // skip name → persist
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
 
     expect(persist).toHaveBeenCalledWith([{ url: "http://x:1", id: "my-id" }]);
   });
@@ -181,7 +220,7 @@ describe("ServerSettingsList add wizard", () => {
     expect(editor.render(80).join("\n")).toContain('Invalid value "not-a-url"');
 
     editor.handleInput(ESC);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flush();
     expect(persist).not.toHaveBeenCalled();
     // Back at the (empty) list view
     expect(editor.render(80).join("\n")).toContain("(a) add server");
@@ -189,20 +228,18 @@ describe("ServerSettingsList add wizard", () => {
 });
 
 describe("OverrideEntryListEditor cost re-prefill", () => {
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
   it("re-entering a cost field prefills the just-saved value", async () => {
     const persist = vi.fn().mockResolvedValue(undefined);
     const list = new OverrideSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
+      keybindings: createMockKeybindings(),
       servers: [
         {
           url: "http://x:1",
           overrides: { "gpt-*": { cost: { input: 0.2 } } },
         },
-      ] as never[],
+      ] as LlamaServer[],
       persist,
       done: vi.fn(),
       onError: vi.fn(),
@@ -229,21 +266,99 @@ describe("OverrideEntryListEditor cost re-prefill", () => {
   });
 });
 
-describe("OverrideSettingsList escape navigation", () => {
-  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+describe("OverrideEntryListEditor field reset (r)", () => {
+  const DOWN = "\x1b[B"; // tui.select.down
 
   const build = () => {
-    const done = vi.fn();
+    const persist = vi.fn().mockResolvedValue(undefined);
     const list = new OverrideSettingsList({
       tui: createMockTui(),
       theme: createMockTheme(),
-      keybindings: createKeybindings(),
+      keybindings: createMockKeybindings(),
       servers: [
         {
           url: "http://x:1",
           overrides: { "gpt-*": { cost: { input: 0.2 } } },
         },
-      ] as never[],
+      ] as LlamaServer[],
+      persist,
+      done: vi.fn(),
+      onError: vi.fn(),
+      onChanged: vi.fn(),
+    });
+    return { list, persist };
+  };
+
+  /** Server row → field submenu with the cursor on `cost.input`. */
+  const openCostInput = (list: OverrideSettingsList) => {
+    list.handleInput(ENTER); // drill into the server row (entry list)
+    list.handleInput(ENTER); // open the field submenu (cursor: pattern)
+    list.handleInput(DOWN); // cursor: cost.input
+  };
+
+  it("removes the field from the override and persists on r", async () => {
+    const { list, persist } = build();
+
+    openCostInput(list);
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).toHaveBeenCalledWith([
+      { url: "http://x:1", overrides: { "gpt-*": {} } },
+    ]);
+    // The reset row falls back to the default display ("0"), and the
+    // stale value is gone
+    const rendered = list.render(80).join("\n");
+    expect(rendered).not.toContain("0.2");
+  });
+
+  it("does nothing when the field is already unset", async () => {
+    const { list, persist } = build();
+
+    openCostInput(list);
+    list.handleInput(DOWN); // cursor: cost.output (not set)
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on the pattern row", async () => {
+    const { list, persist } = build();
+
+    list.handleInput(ENTER); // drill into the server row (entry list)
+    list.handleInput(ENTER); // open the field submenu (cursor: pattern)
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it("offers no reset on the top-level server list", async () => {
+    const { list, persist } = build();
+
+    list.handleInput("r");
+    await flush();
+
+    expect(persist).not.toHaveBeenCalled();
+    // The hint must not advertise the removed shortcut
+    expect(list.render(80).join("\n")).not.toContain("r reset to default");
+  });
+});
+
+describe("OverrideSettingsList escape navigation", () => {
+  const build = () => {
+    const done = vi.fn();
+    const list = new OverrideSettingsList({
+      tui: createMockTui(),
+      theme: createMockTheme(),
+      keybindings: createMockKeybindings(),
+      servers: [
+        {
+          url: "http://x:1",
+          overrides: { "gpt-*": { cost: { input: 0.2 } } },
+        },
+      ] as LlamaServer[],
       persist: vi.fn().mockResolvedValue(undefined),
       done,
       onError: vi.fn(),

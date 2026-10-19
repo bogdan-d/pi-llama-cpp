@@ -9,38 +9,16 @@ import { errorMessage } from "../utils/errors";
 import { Status } from "../enums/status";
 import { ModelSelectEvent } from "../interfaces/events";
 import type { SettingsService } from "../settings/settings";
-import { BaseModel } from "../models/baseModel";
+import { Model } from "../models/model";
 import { ServerManager } from "./server";
+import { InflightTracker, inflightTracker } from "./inflightTracker";
 
 export class EventManager {
-  /**
-   * Model with a load currently in flight. Deliberately a class static:
-   * the load is started by CommandManager
-   * (fire-and-forget from the /models editor) while the "session switched
-   * mid-load" warning must be emitted here, from the session_before_switch
-   * hook — a shared static is the least-plumbing bridge between the two
-   * event-owning managers.
-   *
-   * Known limits, accepted: single slot — a second overlapping load
-   * overwrites the first, and the first load's onFinished reset can clear
-   * the flag while the second is still loading, so the session-switch
-   * warning may be missed.
-   */
-  static inflightModel: BaseModel | null = null;
-
   constructor(
     private readonly serverManager: ServerManager,
     private readonly settings: SettingsService,
+    private readonly tracker: InflightTracker = inflightTracker,
   ) {}
-
-  /**
-   * Resets the in-flight model reference. Called by `loadWithFeedback`
-   * when the load settles (see `inflightModel` for why this lives on a
-   * static).
-   */
-  static resetInflightModel() {
-    EventManager.inflightModel = null;
-  }
 
   /**
    * Reacts to a new model event triggered by Pi
@@ -69,23 +47,30 @@ export class EventManager {
   }
 
   /**
-   * Loads the model if auto-loading is enabled and the model is unloaded.
+   * Loads the model if auto-loading is enabled and the model is unloaded,
+   * or waits for an in-flight load if the model is already loading.
    *
    * @param model The model to potentially auto-load
    * @param ctx Pi context
    * @param pi Pi extension API
    */
   private async autoLoadIfNeeded(
-    model: BaseModel,
+    model: Model,
     ctx: ExtensionContext,
     pi: ExtensionAPI,
   ): Promise<void> {
     if (!(await this.settings.resolveAutoloadOnMessage())) return;
 
     const status = await model.getStatus();
-    if (status !== Status.UNLOADED) return;
+    if (status === Status.UNLOADED) {
+      await this.loadWithFeedback(model, ctx, pi);
+      return;
+    }
 
-    await this.loadWithFeedback(model, ctx, pi);
+    // If the model is already loading (e.g. from /models), wait for it.
+    if (status === Status.LOADING && this.tracker.inflightModel === model) {
+      await this.tracker.inflightPromise;
+    }
   }
 
   /**
@@ -95,10 +80,10 @@ export class EventManager {
    * @param ctx Pi context
    */
   async onSessionBeforeSwitch(ctx: ExtensionContext) {
-    if (!EventManager.inflightModel) return;
+    if (!this.tracker.inflightModel) return;
 
     const messages = [
-      `Session change detected while model '${EventManager.inflightModel.name}' was still loading.`,
+      `Session change detected while model '${this.tracker.inflightModel.name}' was still loading.`,
       "Model load will continue in the background, but UI might not update.",
       "",
       "Verify that your new model is loaded, or use /models to re-select it afterwards.",
@@ -203,12 +188,12 @@ export class EventManager {
    * @param pi Pi extension API (for model switching and provider re-scan)
    */
   async loadWithFeedback(
-    model: BaseModel,
+    model: Model,
     ctx: ExtensionContext,
     pi: ExtensionAPI,
   ): Promise<void> {
     ctx.ui.notify(`Loading ${model.name}...`, "info");
-    EventManager.inflightModel = model;
+    this.tracker.inflightModel = model;
 
     // Subscribe to SSE progress when available
     const server = this.serverManager.getServer(model);
@@ -227,7 +212,7 @@ export class EventManager {
     }
 
     // Execute the loading process
-    try {
+    const loadPromise = (async () => {
       await model.load();
 
       if ((await model.getStatus()) === Status.FAILED)
@@ -238,11 +223,18 @@ export class EventManager {
       const { serverId } = model;
       const piModel = ctx.modelRegistry.find(serverId, model.id);
       if (piModel) await pi.setModel(piModel);
+    })();
+
+    this.tracker.inflightPromise = loadPromise;
+
+    try {
+      await loadPromise;
     } catch (err) {
       ctx.ui.notify(errorMessage(err), "error");
     } finally {
       cleanupProgress();
-      EventManager.resetInflightModel();
+      this.tracker.reset();
+      this.tracker.inflightPromise = null;
 
       // Re-scan providers so the model registry reflects the new state
       await this.serverManager.update(pi);

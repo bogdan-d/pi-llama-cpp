@@ -12,11 +12,12 @@ import { CommandManager } from "./managers/command";
 import { EventManager } from "./managers/events";
 import { ServerManager } from "./managers/server";
 import { StatsManager } from "./managers/stats";
+import { ServerFactory } from "./servers/serverFactory";
 import { SettingsService } from "./settings/settings";
 
 export default async function (pi: ExtensionAPI) {
   const settings = SettingsService.create();
-  const serverManager = new ServerManager(settings);
+  const serverManager = new ServerManager(settings, new ServerFactory());
   const eventManager = new EventManager(serverManager, settings);
   const commandManager = new CommandManager(
     serverManager,

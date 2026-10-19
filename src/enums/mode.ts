@@ -1,4 +1,4 @@
-/** The possible modes of llama-server models */
+/** The possible modes of llama-server servers */
 export enum Mode {
   ROUTER = "router",
   SINGLE = "single",

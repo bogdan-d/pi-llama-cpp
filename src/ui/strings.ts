@@ -151,3 +151,21 @@ export const authRequiredMessage = (
     `Server at '${baseUrl}' requires a valid API key.`,
     `Configure the key via '/login ${providerId}' or in '${getAgentDir()}/auth.json'.`,
   );
+
+/**
+ * Generates a warning message for a server that timed out during initialization.
+ */
+export const timeoutMessage = (baseUrl: string, timeout: number): string =>
+  warnUser(
+    `Server initialization for '${baseUrl}' took more than ${timeout} ms, so it has been skipped.`,
+    `Run '/models' to retry without timeout and see all models.`,
+  );
+
+/**
+ * Generates a warning message for a server that is unreachable.
+ */
+export const unreachableMessage = (baseUrl: string): string =>
+  warnUser(
+    `Server at '${baseUrl}' is unreachable.`,
+    `Check the URL and try again. Run '/models' to retry.`,
+  );

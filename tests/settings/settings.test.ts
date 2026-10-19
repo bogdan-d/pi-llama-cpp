@@ -1,21 +1,23 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import {
   API_KEY_PLACEHOLDER,
   LLAMA_SERVER_URL,
   PROVIDER_PREFIX,
+  THINKING_BUDGETS,
 } from "../../src/constants";
-import { PollingIntervalSettingsItem } from "../../src/settings/items/polling-interval";
-import { PollingTimeoutSettingsItem } from "../../src/settings/items/polling-timeout";
-import { ServerTimeoutSettingsItem } from "../../src/settings/items/server-timeout";
+import { PollingIntervalSettingsItem } from "../../src/settings/items/pollingInterval";
+import { PollingTimeoutSettingsItem } from "../../src/settings/items/pollingTimeout";
+import { ServerTimeoutSettingsItem } from "../../src/settings/items/serverTimeout";
 import { defaultBaseUrl } from "../constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
 import { SettingsService } from "../../src/settings/settings";
 import { SettingsReader } from "../../src/settings/reader";
 import { SettingsWriter } from "../../src/settings/writer";
-import { Server } from "../../src/server";
 import { CredentialResolver } from "../../src/utils/credentialResolver";
 import { SettingsStore } from "../../src/settings/store";
+import { SingleServer } from "../../src/servers/singleServer";
 
 let manager: SettingsService;
 
@@ -161,7 +163,7 @@ describe("API key resolution", () => {
 
 describe("Server with custom id", () => {
   it("should use custom id as providerId when provided", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -170,7 +172,7 @@ describe("Server with custom id", () => {
   });
 
   it("should fall back to URL-based providerId when no custom id", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -178,7 +180,7 @@ describe("Server with custom id", () => {
   });
 
   it("should try custom id first in getApiKey(), then fall back to URL-based", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -204,7 +206,7 @@ describe("Server with custom id", () => {
   it("should return custom id key directly when found", () => {
     mockReadStoredCredential.mockReturnValue({ key: "custom-key" });
 
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
     });
@@ -218,7 +220,7 @@ describe("Server with custom id", () => {
 
 describe("Server with custom name", () => {
   it("should use custom name as suffix in providerName", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customName: "Remote Server",
     });
@@ -227,7 +229,7 @@ describe("Server with custom name", () => {
   });
 
   it("should fall back to URL-based name when no custom name", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -235,7 +237,7 @@ describe("Server with custom name", () => {
   });
 
   it("should use custom name even with custom id", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       customId: "my-custom-id",
       customName: "Remote Server",
@@ -694,11 +696,11 @@ describe("setLlamaSettings", () => {
 
   it("should construct the manager with reader and writer injected", () => {
     const reader = new SettingsReader(
-      mockSettingsManager as any,
+      mockSettingsManager as unknown as SettingsManager,
       new CredentialResolver(),
     );
     const writer = new SettingsWriter(
-      mockSettingsManager as any,
+      mockSettingsManager as unknown as SettingsManager,
       new SettingsStore("/fake/agent/dir/settings.json"),
       new SettingsStore("/fake/project/.pi/settings.json"),
     );
@@ -871,7 +873,7 @@ describe("resolveServerOverrides", () => {
 
 describe("Server with overrides", () => {
   it("should store and expose resolved overrides", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
       overrides: {
         "model-a": { cost: { input: 0.2, output: 0.6 } },
@@ -888,7 +890,7 @@ describe("Server with overrides", () => {
   });
 
   it("should return undefined for findOverrideForModel when no overrides are provided", () => {
-    const server = new Server(manager, {
+    const server = new SingleServer(manager, {
       baseUrl: defaultBaseUrl(),
     });
 
@@ -941,8 +943,10 @@ describe("resolveServerConfigs passes overrides", () => {
 });
 
 describe("Server.findOverrideForModel", () => {
-  function createServer(overrides: Record<string, ModelOverride>): Server {
-    return new Server(SettingsService.create() as any, {
+  function createServer(
+    overrides: Record<string, ModelOverride>,
+  ): SingleServer {
+    return new SingleServer(SettingsService.create(), {
       baseUrl: "http://127.0.0.1:9931",
       overrides,
     });
@@ -1192,5 +1196,113 @@ describe("URL resolution warnings", () => {
     await manager.resolveUrls();
     expect(manager.takeWarnings()).toHaveLength(1);
     expect(manager.takeWarnings()).toEqual([]);
+  });
+});
+
+describe("getLlamaServers", () => {
+  it("should return the servers list from settings", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [
+          { url: "http://127.0.0.1:9931" },
+          { url: "http://127.0.0.1:8081" },
+        ],
+      },
+    });
+
+    const result = await manager.getLlamaServers();
+    expect(result).toHaveLength(2);
+    expect(result[0].url).toBe("http://127.0.0.1:9931");
+  });
+
+  it("should return an empty array when no servers are configured", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {},
+    });
+
+    const result = await manager.getLlamaServers();
+    expect(result).toEqual([]);
+  });
+});
+
+describe("resolveServerTimeout", () => {
+  it("should return the server timeout from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { serverTimeout: 5000 },
+    });
+
+    expect(await manager.resolveServerTimeout()).toBe(5000);
+  });
+});
+
+describe("resolvePollingInterval", () => {
+  it("should return the polling interval from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { pollingInterval: 20 },
+    });
+
+    expect(await manager.resolvePollingInterval()).toBe(20);
+  });
+});
+
+describe("resolvePollingTimeout", () => {
+  it("should return the polling timeout from resolveTimeouts", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { pollingTimeout: 30000 },
+    });
+
+    expect(await manager.resolvePollingTimeout()).toBe(30000);
+  });
+});
+
+describe("resolveEnableSSE", () => {
+  it("should return true when enableSSE is not set (default)", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {},
+    });
+
+    expect(await manager.resolveEnableSSE()).toBe(true);
+  });
+
+  it("should return the configured enableSSE value", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: { enableSSE: false },
+    });
+
+    expect(await manager.resolveEnableSSE()).toBe(false);
+  });
+});
+
+describe("resolveThinkingBudgets undefined fallback", () => {
+  it("should return defaults when getThinkingBudgets returns undefined", () => {
+    mockSettingsManager.getThinkingBudgets.mockReturnValue(undefined);
+
+    const result = manager.resolveThinkingBudgets();
+
+    expect(result).toEqual(THINKING_BUDGETS);
+  });
+});
+
+describe("parseUrls edge cases", () => {
+  it("should skip empty URL segments from trailing semicolons", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://good:9931;" }],
+      },
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931"]);
+  });
+
+  it("should skip empty URL segments from consecutive semicolons", async () => {
+    mockSettingsManager.getProjectSettings.mockReturnValue({
+      llamaSettings: {
+        servers: [{ url: "http://good:9931;;http://also-good:8080" }],
+      },
+    });
+
+    const result = await manager.resolveUrls();
+    expect(result).toEqual(["http://good:9931", "http://also-good:8080"]);
   });
 });

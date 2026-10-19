@@ -24,6 +24,13 @@ export class ReasoningField extends OverrideField {
     else delete override.reasoning;
   }
 
+  /** Removes the `reasoning` key. */
+  override remove(override: ModelOverride): boolean {
+    const had = override.reasoning !== undefined;
+    delete override.reasoning;
+    return had;
+  }
+
   /** Appears in the summary only when explicitly set. */
   override summaryPart(override: ModelOverride): string | null {
     return override.reasoning === undefined

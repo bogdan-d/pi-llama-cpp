@@ -1,10 +1,10 @@
 import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { SettingItem, SettingsList } from "@earendil-works/pi-tui";
-import { ServerTimeoutSettingsItem } from "../../../settings/items/server-timeout";
+import { ServerTimeoutSettingsItem } from "../../../settings/items/serverTimeout";
 import { ServerStatus } from "../../../enums/serverStatus";
 import type { LlamaServer } from "../../../interfaces/settings";
 import type { SettingsService } from "../../../settings/settings";
-import { Server } from "../../../server";
+import { Server } from "../../../servers/server";
 import { ServerIds } from "../../../utils/serverIds";
 import { TITLES, authRequiredMessage } from "../../strings";
 import type { ServerSettingsListOptions } from "../editorOptions";
@@ -28,9 +28,16 @@ import { ServerWizard } from "./wizard";
  * - **Esc** closes the editor.
  */
 export class ServerSettingsList extends ListEditor<ServerSettingsListOptions> {
+  /**
+   * Resolves once the async initial build (health probes, list
+   * construction) completes. Consumers that render immediately after
+   * construction can await this instead of polling internal state.
+   */
+  readonly ready: Promise<void>;
+
   constructor(options: ServerSettingsListOptions) {
     super(options);
-    void this.buildSettingsList().then((list) => {
+    this.ready = this.buildSettingsList().then((list) => {
       this.settingsList = list;
       this.options.tui.requestRender();
     });

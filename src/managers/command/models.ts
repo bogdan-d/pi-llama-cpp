@@ -7,7 +7,7 @@ import { PROVIDER_NAME } from "../../constants";
 import { Action } from "../../enums/action";
 import { Mode } from "../../enums/mode";
 import { Status } from "../../enums/status";
-import { BaseModel } from "../../models/baseModel";
+import { Model } from "../../models/model";
 import { EventManager } from "../events";
 import type { ServerManager } from "../server";
 import type { SettingsService } from "../../settings/settings";
@@ -92,8 +92,8 @@ export class ModelsMenu {
    */
   private async selectionLoop(
     ctx: ExtensionCommandContext,
-    models: BaseModel[],
-  ): Promise<{ action: Action; model: BaseModel } | null> {
+    models: Model[],
+  ): Promise<{ action: Action; model: Model } | null> {
     while (true) {
       // Select the model
       const model = await this.selectModel(ctx, models);
@@ -119,8 +119,8 @@ export class ModelsMenu {
    */
   private async selectModel(
     ctx: ExtensionCommandContext,
-    models: BaseModel[],
-  ): Promise<BaseModel | null> {
+    models: Model[],
+  ): Promise<Model | null> {
     if (ctx.mode !== "tui") {
       ctx.ui.notify(
         `${PROVIDER_NAME} model selection requires the TUI.`,
@@ -164,7 +164,7 @@ export class ModelsMenu {
       noMatch: (t: string) => ctx.ui.theme.fg("muted", t),
     };
 
-    return ctx.ui.custom<BaseModel | null>((_tui, _theme, _kb, done) => {
+    return ctx.ui.custom<Model | null>((_tui, _theme, _kb, done) => {
       const list = new SelectList(items, MAX_VISIBLE, theme);
       list.onSelect = (item) => {
         done(models[parseInt(item.value, 10)]);
@@ -179,17 +179,17 @@ export class ModelsMenu {
    *
    * @returns A mapping of actions for each status
    */
-  private async getActionsForModel(model: BaseModel): Promise<Array<Action>> {
+  private async getActionsForModel(model: Model): Promise<Array<Action>> {
     const base = [Action.INFO, Action.CANCEL];
 
     const actions: Record<Status, Array<Action>> = {
-      [Status.LOADED]: [Mode.ROUTER, Mode.LLAMASWAP].includes(model.mode)
+      [Status.LOADED]: [Mode.ROUTER, Mode.LLAMASWAP].includes(model.server.mode)
         ? [Action.SWITCH, Action.UNLOAD, ...base]
         : [Action.SWITCH, ...base],
       [Status.LOADING]: [...base],
       [Status.FAILED]: [Action.RETRY, ...base],
       [Status.SLEEPING]:
-        model.mode === Mode.ROUTER
+        model.server.mode === Mode.ROUTER
           ? [Action.SWITCH, Action.UNLOAD, ...base]
           : [Action.SWITCH, ...base],
       [Status.UNLOADED]: [Action.LOAD_AND_SWITCH, Action.LOAD, ...base],
@@ -206,7 +206,7 @@ export class ModelsMenu {
    */
   private async selectAction(
     ctx: ExtensionCommandContext,
-    model: BaseModel,
+    model: Model,
     actions: Array<Action>,
   ): Promise<Action | null> {
     const labels = actions.map((a) => String(a));

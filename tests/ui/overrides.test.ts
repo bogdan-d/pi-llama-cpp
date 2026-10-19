@@ -1,27 +1,36 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { FALLBACK_CTX } from "../../src/constants";
 import type { ModelOverride } from "../../src/interfaces/settings";
-import { SingleModel } from "../../src/models/singleModel";
-import { Server } from "../../src/server";
+import { Model } from "../../src/models/model";
+import { Server } from "../../src/servers/server";
 import { OverrideEntry } from "../../src/ui/editors/override/entry";
 import {
   OverrideFields,
   OverrideSummary,
 } from "../../src/ui/editors/override/fields";
-import {
-  createMockServer,
-  installFetchStub,
-  mockRpc,
-  makeResolverStub,
-} from "../mocks";
+import { createMockServer } from "../mocks/server";
+import { mockResolver } from "../mocks/server";
+import { createRpcFetch } from "../mocks/rpc";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
+const mockFetch = createRpcFetch(mockRpc);
+
+/**
+ * Servers wired to this file's mock RPC through their `ApiClient` —
+ * no global `fetch` stubbing.
+ */
+const createRpcServer = (opts = {}) =>
+  createMockServer({ ...opts, fetchFn: mockFetch });
 
 beforeEach(() => {
   mockRpc.mockReset();
-  installFetchStub();
 });
 
-const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
-  new SingleModel(
+const createModel = (overrides?: Record<string, ModelOverride>): Model =>
+  new Model(
     {
       id: "test",
       tags: [],
@@ -29,8 +38,7 @@ const createModel = (overrides?: Record<string, ModelOverride>): SingleModel =>
       owned_by: "test",
       created: Date.now(),
     },
-    createMockServer({ overrides }),
-    makeResolverStub(),
+    createRpcServer({ resolver: mockResolver, options: { overrides } }),
   );
 
 /** Standard server responses: /props for capabilities, /v1/models for n_ctx */
@@ -48,7 +56,7 @@ const mockDetection = (nCtx: number | undefined) =>
 
 describe("Server.findOverrideForModel", () => {
   const makeServer = (overrides: Record<string, ModelOverride>): Server =>
-    createMockServer({ overrides });
+    createRpcServer({ resolver: mockResolver, options: { overrides } });
 
   it("should match a model by id prefix", () => {
     const server = makeServer({ lla: { reasoning: false } });
@@ -84,7 +92,7 @@ describe("Server.findOverrideForModel", () => {
 
 // ─── reasoning override ────────────────────────────────────────────────────
 
-describe("BaseModel reasoning override", () => {
+describe("Model reasoning override", () => {
   it("should default to true when no override matches", () => {
     expect(createModel().reasoning).toBe(true);
   });
@@ -97,7 +105,7 @@ describe("BaseModel reasoning override", () => {
 
 // ─── capabilities override ────────────────────────────────────────────────
 
-describe("BaseModel capabilities override (via toProviderConfig)", () => {
+describe("Model capabilities override (via toProviderConfig)", () => {
   it("should fully replace detection without contacting the server", async () => {
     mockRpc.mockImplementation(() => {
       throw new Error("override must not trigger a fetch");
@@ -125,7 +133,7 @@ describe("BaseModel capabilities override (via toProviderConfig)", () => {
 
 // ─── contextSize override ─────────────────────────────────────────────────
 
-describe("BaseModel contextSize override (via toProviderConfig)", () => {
+describe("Model contextSize override (via toProviderConfig)", () => {
   it("should return the overridden context size instead of the detected one", async () => {
     mockDetection(8192);
 

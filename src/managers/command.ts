@@ -4,7 +4,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { AutocompleteItem } from "@earendil-works/pi-tui";
 import { PROVIDER_NAME } from "../constants";
-import { SettingsEditor } from "../settings/menu/settings-menu";
+import { SettingsEditor } from "../settings/menu/settingsMenu";
 import { OverrideSettingsList } from "../ui/editors/override/overrideList";
 import { ServerSettingsList } from "../ui/editors/server/serverEditor";
 import { ModelsMenu } from "./command/models";

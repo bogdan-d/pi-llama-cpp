@@ -20,6 +20,10 @@ export const buildAuthHeaders = (apiKey?: string): Record<string, string> =>
 /**
  * Opens the SSE stream at the given endpoint, authenticating via headers.
  *
+ * @param endpoint The SSE endpoint URL
+ * @param apiKey Optional API key for authentication
+ * @param signal Optional abort signal
+ * @param fetchFn Optional custom fetch implementation (for testing)
  * @returns the response body as a stream of raw bytes
  * @throws if the request fails or the server responds with an error status
  */
@@ -27,8 +31,9 @@ export const openSSEStream = async (
   endpoint: string,
   apiKey?: string,
   signal?: AbortSignal,
+  fetchFn: typeof globalThis.fetch = fetch,
 ): Promise<ReadableStream<Uint8Array>> => {
-  const response = await fetch(endpoint, {
+  const response = await fetchFn(endpoint, {
     method: "GET",
     headers: buildAuthHeaders(apiKey),
     signal,

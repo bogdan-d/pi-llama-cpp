@@ -1,6 +1,6 @@
 // layering trade-off: api client depends on settings/items to get the shared
 // polling interval default — avoids duplicating the value across modules.
-import { PollingIntervalSettingsItem } from "../settings/items/polling-interval";
+import { PollingIntervalSettingsItem } from "../settings/items/pollingInterval";
 
 /**
  * Error thrown by the API client when the server rejects a request.
@@ -36,12 +36,14 @@ export class ApiClient {
    * @param getApiKey Resolves the API key for authentication at request time
    * @param getPollingInterval Resolves the current polling interval, which
    *   the cache TTL is derived from (half of it) at each GET request
+   * @param fetchFn Optional custom fetch implementation (for testing)
    */
   constructor(
     private readonly baseUrl: string,
     private readonly getApiKey: () => string,
     private readonly getPollingInterval: () => Promise<number> = async () =>
       PollingIntervalSettingsItem.defaultValue,
+    private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {}
 
   /**
@@ -109,7 +111,7 @@ export class ApiClient {
    * @throws ApiError with status 401 on authentication rejection (kept for
    *   symmetry with `do_request`, so auth classification needs no special case)
    */
-  async probeStatus(endpoint: string, timeout: number): Promise<number> {
+  async probeStatus(endpoint: string, timeout?: number): Promise<number> {
     const res = await this.fetchResponse(endpoint, "GET", undefined, timeout);
     if (res.status === 401) {
       throw new ApiError("authentication", res.status);
@@ -198,7 +200,7 @@ export class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const signal = timeout ? AbortSignal.timeout(timeout) : undefined;
 
-    return fetch(url, {
+    return this.fetchFn(url, {
       signal,
       method,
       headers: {

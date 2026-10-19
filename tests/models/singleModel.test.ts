@@ -1,126 +1,85 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { Mode } from "../../src/enums/mode";
-import { Status } from "../../src/enums/status";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DataProperty } from "../../src/interfaces/endpoints/models";
-import { SingleModel } from "../../src/models/singleModel";
-import {
-  createMockServer,
-  installFetchStub,
-  mockRpc,
-  makeResolverStub,
-} from "../mocks";
+import { Model } from "../../src/models/model";
+import { createMockServer } from "../mocks/server";
+import { createMockRpc } from "../mocks/mockRpc";
+
+/** Per-file isolated mock RPC. */
+const mockRpc = createMockRpc();
+/** fetch implementation backed by mockRpc — injected into every Server. */
 
 beforeEach(() => {
   mockRpc.mockReset();
-  installFetchStub();
 });
 
-const createModel = (extra: Partial<DataProperty> = {}): SingleModel =>
-  new SingleModel(
+const createModel = (extra: Partial<DataProperty> = {}) =>
+  new Model(
     {
-      id: "test",
+      id: "test-model",
+      aliases: ["test-alias"],
       tags: [],
       object: "model",
       owned_by: "test",
       created: Date.now(),
       ...extra,
     },
-    createMockServer(),
-    makeResolverStub(),
+    createMockServer({
+      fetchFn: mockRpc,
+      overrides: {
+        getCapabilities: vi
+          .fn()
+          .mockResolvedValue(["text"] as ("text" | "image")[]),
+        getContextSize: vi.fn().mockResolvedValue(4096),
+      },
+    }),
   );
 
-describe("SingleModel mode", () => {
-  it("should always return SINGLE mode", () => {
-    const model = createModel();
-    expect(model.mode).toBe(Mode.SINGLE);
-  });
-});
-
-describe("SingleModel capabilities (via toProviderConfig)", () => {
-  it("should detect image capability when multimodal is in capabilities", async () => {
-    mockRpc.mockResolvedValueOnce({ modalities: { vision: true } });
-
-    const model = createModel();
-    const { input } = await model.toProviderConfig();
-
-    expect(input).toEqual(["text", "image"]);
+describe("Model", () => {
+  describe("id", () => {
+    it("should return the model id", () => {
+      const model = createModel({ id: "my-model" });
+      expect(model.id).toBe("my-model");
+    });
   });
 
-  it("should detect text-only capability when multimodal is not in capabilities", async () => {
-    mockRpc.mockResolvedValueOnce({ modalities: { vision: false } });
-
-    const model = createModel();
-    const { input } = await model.toProviderConfig();
-
-    expect(input).toEqual(["text"]);
-  });
-
-  it("should fall back to the models endpoint when auth fails", async () => {
-    mockRpc
-      .mockRejectedValueOnce(new Error("401 Unauthorized")) // /props
-      .mockRejectedValueOnce(new Error("401 Unauthorized")) // /v1/models in BaseModel's catch
-      .mockResolvedValueOnce({
-        object: "list",
-        data: [],
-        models: [{ capabilities: ["multimodal"] }],
-      }); // /v1/models retry in SingleModel's catch
-
-    const model = createModel();
-    const { input } = await model.toProviderConfig();
-
-    expect(input).toEqual(["text", "image"]);
-  });
-
-  it("should fall back to text-only when the models endpoint reports no multimodal", async () => {
-    mockRpc
-      .mockRejectedValueOnce(new Error("401 Unauthorized")) // /props
-      .mockRejectedValueOnce(new Error("401 Unauthorized")) // /v1/models in BaseModel's catch
-      .mockResolvedValueOnce({
-        object: "list",
-        data: [],
-        models: [{ capabilities: ["text"] }],
-      }); // /v1/models retry in SingleModel's catch
-
-    const model = createModel();
-    const { input } = await model.toProviderConfig();
-
-    expect(input).toEqual(["text"]);
-  });
-});
-
-describe("SingleModel getStatus", () => {
-  it("should return LOADED when not sleeping", async () => {
-    mockRpc.mockResolvedValueOnce({ is_sleeping: false });
-
-    const model = createModel();
-    const status = await model.getStatus();
-
-    expect(status).toBe(Status.LOADED);
-    expect(mockRpc).toHaveBeenCalledWith(
-      `/props?model=${model.id}&autoload=false`,
-    );
-  });
-
-  it("should return SLEEPING when is_sleeping is true", async () => {
-    mockRpc.mockResolvedValueOnce({ is_sleeping: true });
-
-    const model = createModel();
-    const status = await model.getStatus();
-
-    expect(status).toBe(Status.SLEEPING);
-  });
-});
-
-describe("SingleModel context size (via toProviderConfig)", () => {
-  it("should return n_ctx from /v1/models endpoint meta", async () => {
-    mockRpc.mockResolvedValue({
-      data: [{ id: "test", meta: { n_ctx: 8192 } }],
+  describe("name", () => {
+    it("should return the first alias", () => {
+      const model = createModel();
+      expect(model.name).toBe("test-alias");
     });
 
-    const model = createModel();
-    const { contextWindow } = await model.toProviderConfig();
+    it("should fall back to id when no aliases", () => {
+      const model = createModel({ aliases: undefined });
+      expect(model.name).toBe("test-model");
+    });
+  });
 
-    expect(contextWindow).toBe(8192);
-    expect(mockRpc).toHaveBeenCalledWith("/v1/models");
+  describe("reasoning", () => {
+    it("should default to true", () => {
+      const model = createModel();
+      expect(model.reasoning).toBe(true);
+    });
+
+    it("should use override when set", () => {
+      const model = createModel();
+      // Override reasoning on the server
+      (model as unknown as Record<string, Server>).server = {
+        ...model.server,
+        findOverrideForModel: () => ({ reasoning: false }),
+      } as unknown as typeof model.server;
+      expect(model.reasoning).toBe(false);
+    });
+  });
+
+  describe("getInfo", () => {
+    it("should return formatted model info", async () => {
+      const model = createModel();
+      const info = await model.getInfo();
+
+      expect(info).toContain("test-model");
+      expect(info).toContain("test-alias");
+    });
   });
 });
+
+import type { Server } from "../../src/servers/server";
