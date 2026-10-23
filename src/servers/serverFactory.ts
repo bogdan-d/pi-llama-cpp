@@ -4,6 +4,7 @@ import type {
   ServerSettingsResolver,
 } from "../interfaces/server";
 import { ApiClient, ApiError } from "../api/client";
+import { ServerIds } from "../utils/serverIds";
 import { ServerStatus } from "../enums/serverStatus";
 import { LegacyServer } from "../servers/legacyServer";
 import { LlamaSwapServer } from "../servers/llamaSwapServer";
@@ -59,7 +60,10 @@ export class ServerFactory {
   ): Promise<ServerCreationResult> {
     const apiClient = new ApiClient(
       options.baseUrl,
-      () => resolver.resolveApiKey(options.customId ?? ""),
+      () =>
+        resolver.resolveApiKey(
+          ServerIds.resolve(options.baseUrl, options.customId),
+        ),
       () => resolver.resolvePollingInterval(),
       fetchFn,
     );
@@ -67,7 +71,7 @@ export class ServerFactory {
     const [health, auth, props] = await Promise.allSettled([
       apiClient.probeStatus("/health", timeout),
       apiClient.get<ModelsEndpoint>("/v1/models", timeout),
-      apiClient.get<PropsEndpoint>("/props?autoload=false"),
+      apiClient.get<PropsEndpoint>("/props?autoload=false", timeout),
     ]);
 
     // Health probe

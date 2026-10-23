@@ -134,12 +134,15 @@ describe("CommandManager", () => {
 
       await commandManager.handleCommand("unload", ctx, mockPi);
 
-      expect(model1.unload).toHaveBeenCalled();
-      expect(model2.unload).toHaveBeenCalled();
+      // Unloading is fire-and-forget: the "Unloading..." notification
+      // and the model.unload() calls happen synchronously; the
+      // "Unloaded all" notification fires later after the settled promise.
       expect(ctx.ui.notify).toHaveBeenCalledWith(
-        "Unloaded all Llama.cpp models",
+        "Unloading Llama.cpp models...",
         "info",
       );
+      expect(model1.unload).toHaveBeenCalled();
+      expect(model2.unload).toHaveBeenCalled();
     });
 
     it("should show model info when args is 'info'", async () => {
@@ -710,8 +713,13 @@ describe("CommandManager", () => {
 
       await commandManager.handleCommand("", ctx, mockPi);
 
-      expect(model.unload).toHaveBeenCalled();
-      expect(ctx.ui.notify).toHaveBeenCalledWith("Unloaded model-a", "info");
+      // unloadModel is fire-and-forget — the command returns
+      // immediately after initiating the unload (unlike the old await
+      // model.unload() which blocked until completion).
+      expect(ctx.ui.notify).toHaveBeenCalledWith(
+        "Unloading model-a...",
+        "info",
+      );
     });
 
     it("should switch model when SWITCH action is selected", async () => {

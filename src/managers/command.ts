@@ -106,7 +106,7 @@ export class CommandManager {
     await this.serverManager.update(pi);
 
     // Notify about unreachable servers
-    for (const url of this.serverManager.failedUrls) {
+    for (const url of this.serverManager.getFailedUrls()) {
       this.notifyNotFound(ctx, url);
     }
 
@@ -118,8 +118,11 @@ export class CommandManager {
     if (args === "unload") {
       ctx.ui.notify(`Unloading ${PROVIDER_NAME} models...`, "info");
       const models = await this.serverManager.getAllModels();
-      await Promise.all(models.map((model) => model.unload()));
-      ctx.ui.notify(`Unloaded all ${PROVIDER_NAME} models`, "info");
+      // Fire-and-forget: don't await so the TUI stays responsive.
+      Promise.allSettled(models.map((model) => model.unload())).then(() => {
+        ctx.ui.notify(`Unloaded all ${PROVIDER_NAME} models`, "info");
+        this.serverManager.update(pi);
+      });
       return;
     }
 

@@ -28,12 +28,12 @@ export class SSEClient {
 
   /**
    * @param sseEndpoint - The full SSE endpoint URL (e.g., "http://127.0.0.1:9931/models/sse")
-   * @param apiKey - Optional API key for authenticated servers
+   * @param getApiKey - Resolves the API key at request time (for lazy resolution)
    * @param fetchFn - Optional custom fetch implementation (for testing)
    */
   constructor(
     private readonly sseEndpoint: string,
-    private readonly apiKey?: string,
+    private readonly getApiKey: () => string | undefined,
     private readonly fetchFn: typeof globalThis.fetch = fetch,
   ) {}
 
@@ -71,7 +71,7 @@ export class SSEClient {
       try {
         body = await openSSEStream(
           this.sseEndpoint,
-          this.apiKey,
+          this.getApiKey(),
           abortController.signal,
           this.fetchFn,
         );

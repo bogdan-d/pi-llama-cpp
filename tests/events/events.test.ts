@@ -710,7 +710,7 @@ describe("loadWithFeedback SSE progress with stage", () => {
 });
 
 describe("loadWithFeedback model failure", () => {
-  it("should notify with error when model load results in FAILED status", async () => {
+  it("should not show error when load() succeeds even if status is FAILED", async () => {
     vi.mocked(settingsStub.resolveAutoloadOnMessage).mockResolvedValue(true);
     vi.mocked(settingsStub.resolveEnableSSE).mockResolvedValue(false);
 
@@ -733,9 +733,40 @@ describe("loadWithFeedback model failure", () => {
       mockPi,
     );
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Failed to load model model-c",
-      "error",
-    );
+    // load() succeeded, so no error notification — the redundant status
+    // check was removed to avoid false failures after a successful load.
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Model model-c ready", "info");
+  });
+});
+
+describe("EventManager.unloadModel", () => {
+  it("should notify on unload success and re-scan providers", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        unload: vi.fn().mockResolvedValue(undefined),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.unloadModel(server.models[0], ctx, mockPi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloading model-a...", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloaded model-a", "info");
+  });
+
+  it("should notify on error and still re-scan providers", async () => {
+    const server = createTestServer(defaultBaseUrl(), [
+      createMockModel("model-a", {
+        unload: vi.fn().mockRejectedValue(new Error("unload failed")),
+      }),
+    ]);
+    const eventManager = createEventManager(server);
+    const ctx = createMockCtx();
+
+    await eventManager.unloadModel(server.models[0], ctx, mockPi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Unloading model-a...", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("unload failed", "error");
   });
 });
